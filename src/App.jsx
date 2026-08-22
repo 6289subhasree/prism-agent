@@ -148,7 +148,7 @@ export default function App() {
   useEffect(() => () => abortRef.current?.abort(), []);
   const dismissIntro = useCallback(() => { sessionStorage.setItem("prism-intro-seen", "1"); setShowIntro(false); }, []);
   if (report) return <Report report={report} onReset={() => { setReport(null); setStatus("idle"); setPhases([]); window.scrollTo(0, 0); }}/>
-  return <div id="top">{showIntro && <Intro onDone={dismissIntro}/>}<nav><a href="#top" className="brand">PRISM<i/></a><div><a href="#story">HOW IT WORKS</a><a href="#investigate">INVESTIGATE</a><a href="https://github.com" target="_blank" rel="noreferrer">GITHUB</a></div></nav>
+  return <div id="top">{showIntro && <Intro onDone={dismissIntro}/>}<nav><a href="#top" className="brand">PRISM<i/></a><div><a href="#story">HOW IT WORKS</a><a href="#investigate">INVESTIGATE</a><a href="https://github.com/6289subhasree/prism-agent" target="_blank" rel="noreferrer">GITHUB</a></div></nav>
     <NetworkWorld progress={progress}/>
     <div className="story" id="story">
       <section className="scene hero"><div><div className="scene-no">01 / THE SURFACE <span>SESSION / IDLE</span></div><h1>YOU OPENED<br/>ONE WEBSITE.</h1><div className="hero-twist">Your browser didn’t.</div><h2>PRISM SEES THE TRAIL.</h2><p>An autonomous browser agent that follows third-party connections, sensitive data flows and tracking signals as they happen.</p><UrlForm value={url} onChange={setUrl} onSubmit={investigate}/></div><div className="scroll-cue">SCROLL TO LOOK BENEATH <i>↓</i></div></section>
