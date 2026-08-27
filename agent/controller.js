@@ -32,6 +32,8 @@ const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 const MAX_INVESTIGATION_TIME_MS = 90000;
 const GEMINI_MODEL = "gemini-3.7-flash";
 const GEMINI_TIMEOUT_MS = 25000;
+const WEBCMD_PREFLIGHT_TIMEOUT_MS = 20000;
+const WEBCMD_UNAVAILABLE_MESSAGE = "Webcmd is unavailable. Run npm install, then npm run prism:doctor before investigating.";
 
 // Cleanup (closing the session) always gets a small fixed budget of its
 // own, even if the investigation budget is already exhausted — otherwise
@@ -51,11 +53,65 @@ function assertValidUrl(url) {
 }
 
 function webcmdExecutable() {
-  const packageEntry = path.join(path.dirname(process.execPath), "node_modules", "@agentrhq", "webcmd", "dist", "src", "main.js");
-  if (fs.existsSync(packageEntry)) {
+  try {
+    const packageEntry = require.resolve("@agentrhq/webcmd");
     return { executable: process.execPath, prefixArgs: [packageEntry] };
-  }
+  } catch {}
+
+  // Preserve support for machines where Webcmd is installed globally but is
+  // not listed in this project's dependency tree.
   return { executable: process.platform === "win32" ? "webcmd.cmd" : "webcmd", prefixArgs: [] };
+}
+
+function parseJsonOutput(output, commandName) {
+  const text = String(output).trim();
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  // Some browser runtimes print a startup banner before Webcmd's requested
+  // JSON. Work backwards through object-looking lines so braces in a banner
+  // cannot make an otherwise healthy preflight fail.
+  const starts = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "{" && (i === 0 || text[i - 1] === "\n" || text[i - 1] === "\r")) starts.push(i);
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    try {
+      return JSON.parse(text.slice(starts[i]));
+    } catch {}
+  }
+  throw new Error(`Webcmd ${commandName} returned invalid JSON`);
+}
+
+function preflightWebcmd(timeoutMs, run = webcmd) {
+  const command = webcmdExecutable();
+  const location = command.prefixArgs[0] || command.executable;
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(1, deadline - Date.now());
+  let version;
+  try {
+    version = String(run(["--version"], remaining())).trim();
+  } catch (err) {
+    if (err.code === "ENOENT") throw new Error(WEBCMD_UNAVAILABLE_MESSAGE);
+    throw new Error(`Webcmd preflight could not start ${location}: ${err.message}`);
+  }
+  if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version)) {
+    throw new Error(`Webcmd preflight received an invalid version from ${location}: ${version || "empty output"}`);
+  }
+
+  let health;
+  try {
+    health = parseJsonOutput(run(["doctor", "--json"], remaining()), "doctor");
+  } catch (err) {
+    throw new Error(`Webcmd preflight health check failed: ${err.message}`);
+  }
+  const issues = Array.isArray(health.issues) ? health.issues.filter(Boolean) : [];
+  if (health.binary?.installed !== true || health.connectivity?.ok !== true) {
+    const detail = issues.join(" ") || health.connectivity?.error || "browser runtime is unavailable";
+    throw new Error(`Webcmd preflight failed (${version} at ${location}): ${detail}`);
+  }
+  return { version, location };
 }
 
 // execFileSync with an argument array — no shell string interpolation,
@@ -75,6 +131,11 @@ function webcmd(args, timeoutMs) {
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (err) {
+    if (err.code === "ENOENT") {
+      const unavailable = new Error(WEBCMD_UNAVAILABLE_MESSAGE);
+      unavailable.code = "ENOENT";
+      throw unavailable;
+    }
     if (
       err.killed ||
       err.signal === "SIGTERM" ||
@@ -96,7 +157,11 @@ function webcmd(args, timeoutMs) {
 }
 
 function createSession(timeoutMs) {
-  const out = JSON.parse(webcmd(["session", "create", "-f", "json"], timeoutMs));
+  const sessionName = `prism-${process.pid}-${Date.now()}`;
+  const out = parseJsonOutput(
+    webcmd(["session", "create", sessionName, "-f", "json"], timeoutMs),
+    "session create"
+  );
   const sessionId = out.session || out.id || out.sessionId;
   if (!sessionId) throw new Error("Webcmd did not return a session ID");
   return sessionId;
@@ -360,6 +425,12 @@ async function runInvestigation(targetUrl) {
     return r;
   }
 
+  console.log("● [PREFLIGHT] Checking Webcmd and browser runtime...");
+  const preflight = preflightWebcmd(
+    Math.min(requireTime("Webcmd preflight"), WEBCMD_PREFLIGHT_TIMEOUT_MS)
+  );
+  console.log(`  Webcmd ${preflight.version} ready (${preflight.location})`);
+
   const sessionId = createSession(requireTime("session create"));
   let phase1, phase2 = null, plannerDecision;
   const phases = [];
@@ -488,4 +559,7 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { investigate };
+module.exports = {
+  investigate,
+  _testing: { parseJsonOutput, preflightWebcmd, webcmdExecutable },
+};

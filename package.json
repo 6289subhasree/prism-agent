@@ -7,15 +7,17 @@
     "server": "node server.js",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "prism:doctor": "node scripts/prism-doctor.js",
+    "test": "node --test agent/controller.test.js",
     "test:api": "node scripts/test-api.js"
   },
   "dependencies": {
+    "@agentrhq/webcmd": "0.7.8",
     "@vitejs/plugin-react": "latest",
     "concurrently": "latest",
     "express": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
-  },
-  "devDependencies": {}
+    "react-dom": "latest",
+    "vite": "latest"
+  }
 }
