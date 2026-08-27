@@ -2,43 +2,82 @@
 
 > **You opened one website. Your browser didn't.**
 
-PRISM is an autonomous browser privacy investigation agent that uses a live browser session to uncover third-party connections, sensitive data flows, forms, scripts, and tracking signals as they actually occur.
+PRISM is an evidence-first browser privacy investigation agent. It opens a real website in a live [Webcmd](https://github.com/agentrhq/webcmd) browser session, observes runtime network and DOM activity, decides whether deeper inspection is warranted, and produces an explainable report for human review.
 
 ![PRISM investigation frontend](docs/screenshots/prism-hero.png)
 
+## Runtime status
+
+| Capability | Status |
+| --- | --- |
+| Live browser investigation | Working locally with Webcmd 0.7.8 |
+| Deterministic risk scoring | Working; no LLM involved |
+| Gemini explanation | Optional; graceful fallback when unavailable |
+| Hosted public demo | Not provided—PRISM requires a persistent browser daemon |
+| Recommended evaluation | Run locally using the instructions below |
+
+PRISM is intentionally documented as a **local browser-runtime application**, not a static hosted website. A Vercel-style frontend deployment would display the interface but could not create Webcmd sessions or perform genuine investigations. For a live evaluation, run the complete application locally.
+
 ## Why PRISM
 
-Privacy analysis is often based on static source inspection, policy text, or an LLM's interpretation. Those approaches can miss what the browser actually does at runtime.
+Static source inspection, privacy-policy summaries, and LLM-only assessments can miss what a browser actually does at runtime. PRISM instead:
 
-PRISM does **not** ask an LLM whether a website is risky. It:
+- instruments a live browser through Webcmd;
+- captures structured network, form, input, and script evidence;
+- makes a visible, deterministic decision about deeper inspection;
+- continues in the same browser session when a second pass is justified;
+- calculates the risk score with a reproducible rubric;
+- uses Gemini only to explain the completed score; and
+- labels findings as observed or heuristic and keeps them pending human review.
 
-- instruments a live browser with Webcmd;
-- collects network and DOM evidence;
-- decides whether deeper investigation is required;
-- conditionally performs further investigation in the same session;
-- scores the accumulated evidence deterministically;
-- uses Gemini only to explain the finished result; and
-- keeps findings pending human review.
+PRISM reports **patterns, not verdicts**. Third-party activity is not automatically described as a leak, and hostname-based categories are explicitly presented as heuristic.
 
-## How it works
+## Investigation flow
 
-```text
-OBSERVE
-   ↓
-DECIDE
-   ↓
-ACT (only when deeper investigation is needed)
-   ↓
-OBSERVE
-   ↓
-SCORE
-   ↓
-EXPLAIN
-   ↓
-HUMAN REVIEW
+```mermaid
+flowchart TD
+    A["URL submitted"] --> B["Observe live page"]
+    B --> C{"Deeper pass warranted?"}
+    C -- Yes --> D["Act and observe again"]
+    C -- No --> E["Merge available evidence"]
+    D --> E
+    E --> F["Deterministic score"]
+    F --> G["Gemini explanation"]
+    G --> H["Human-review report"]
 ```
 
-`ACT` is conditional. When the initial evidence is sufficient, PRISM proceeds directly from its decision to deterministic scoring instead of running a fixed interaction script.
+The conditional branch is based on explicit evidence such as an external form destination, a third-party domain count near a scoring boundary, or sensitive fields appearing alongside third-party activity.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI["React + Vite UI"] --> API["Express NDJSON bridge"]
+    API --> CTRL["Agent controller"]
+    CTRL --> WC["Webcmd live browser"]
+    WC --> EVID["Structured evidence"]
+    EVID --> SCORE["Deterministic scorer"]
+    SCORE --> EXPLAIN["Optional Gemini explanation"]
+    EXPLAIN --> REPORT["Human-review report"]
+```
+
+The Express bridge validates the requested URL, streams investigation phases to the frontend, and launches the controller without exposing `GEMINI_API_KEY` to the browser.
+
+## Evidence-first scoring
+
+Gemini never chooses, modifies, or overrides the score. The deterministic rubric considers:
+
+| Component | Points |
+| --- | ---: |
+| Unique third-party domains | 0–35 |
+| External form destinations | 0 or 20 |
+| Sensitive input types | 0–30, capped |
+| Heuristic tracking indicators | 0–20 |
+| Final score | Capped at 100 |
+
+Risk levels are `LOW` (0–29), `MEDIUM` (30–59), `HIGH` (60–79), and `CRITICAL` (80–100). Every awarded component includes an exact reason in the report.
+
+![Deterministic evidence and score breakdown](docs/screenshots/prism-evidence.png)
 
 ## Example investigation
 
@@ -46,7 +85,7 @@ One observed run against `https://www.mozilla.org` found:
 
 - 67 total browser requests;
 - 13 third-party requests;
-- 4 unique external domains;
+- 4 unique third-party domains;
 - 1 sensitive field;
 - 1 external form destination;
 - heuristic tracking and analytics indicators; and
@@ -54,143 +93,149 @@ One observed run against `https://www.mozilla.org` found:
 
 ![Mozilla investigation score](docs/screenshots/prism-score.png)
 
-Websites and their integrations change over time, so these numbers describe one observed run rather than a permanently reproducible property of Mozilla.
+Websites and their integrations change, so these figures describe one captured run rather than a permanent property of Mozilla.
 
-## Evidence-first scoring
+## Run PRISM locally
 
-The score is calculated from structured browser evidence. Gemini does not choose, modify, or override it.
+### Prerequisites
 
-```text
-+15  Third-party domain count
-+20  External form destination
- +5  Sensitive input field
-+10  Heuristic tracking indicators
-────
- 50 / 100
-```
+- Windows, macOS, or Linux
+- Node.js 24 recommended
+- npm
+- internet access for the target website
+- a Gemini API key only if the explanation layer is desired
 
-![Deterministic evidence and score breakdown](docs/screenshots/prism-evidence.png)
-
-PRISM separates two kinds of findings:
-
-- **Observed:** browser, network, and DOM evidence captured directly during investigation.
-- **Inferred / heuristic:** pattern-based classifications, such as a hostname likely belonging to an analytics service.
-
-**Patterns, not verdicts.**
-
-![Observed third-party domains and heuristic classifications](docs/screenshots/prism-observed.png)
-
-## Why the agent is actually agentic
-
-This is not a single API call or static scanner. The controller:
-
-1. observes the site;
-2. evaluates the evidence;
-3. chooses whether deeper investigation is necessary;
-4. optionally acts within the existing browser session;
-5. gathers additional evidence;
-6. merges the observations; and
-7. produces the deterministic report.
-
-The decision policy is explicit and reproducible, making the agent's branch visible in the final report.
-
-## Resilience and graceful degradation
-
-If Gemini is unavailable, PRISM still returns:
-
-- captured browser evidence;
-- the deterministic score;
-- the exact score breakdown; and
-- the investigation decision.
-
-Only the optional natural-language explanation is unavailable. The evidence remains valid and pending human review.
-
-## Architecture
-
-```text
-React / Vite UI
-      |
-      v
-Express API bridge
-      |
-      v
-Agent Controller
-      |
-      +--> Webcmd live browser investigation
-      |
-      +--> Evidence merger
-      |
-      +--> Deterministic scorer
-      |
-      +--> Gemini explanation layer
-      |
-      v
-Human-review report
-```
-
-The Express bridge validates the requested URL and invokes the existing controller without exposing shell execution or `GEMINI_API_KEY` to the browser.
-
-## Built with
-
-- **Webcmd by AgentR** — live browser-agent foundation
-- Node.js
-- Express
-- React
-- Vite
-- Gemini API
-
-## Running locally
-
-Install dependencies:
+### 1. Clone and install
 
 ```powershell
+git clone https://github.com/6289subhasree/prism-agent.git
+cd prism-agent
 npm install
 ```
 
-Set the Gemini key in your environment. In Windows PowerShell:
+To evaluate the current repair branch before it is merged:
 
 ```powershell
-$env:GEMINI_API_KEY="your_key_here"
+git switch codex/initial-prism-submission
+npm install
 ```
 
-Start the frontend and API bridge:
+Webcmd `0.7.8` is pinned as a project dependency; a separate global installation is not required.
+
+### 2. Configure Gemini (optional)
+
+Create a `.env` file in the repository root:
+
+```dotenv
+GEMINI_API_KEY=your_api_key_here
+```
+
+The file is local-only and must not be committed. Without a key, PRISM still returns the captured evidence, deterministic score, breakdown, and agent decision; only the explanation layer degrades gracefully.
+
+### 3. Verify the browser runtime
+
+```powershell
+npm run prism:doctor
+```
+
+Do not begin a live demo until the command ends with:
+
+```text
+PASS: PRISM Webcmd preflight completed successfully.
+```
+
+### 4. Run the application
 
 ```powershell
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173), enter a public HTTP(S) URL, and start the investigation.
 
-The controller can also run directly:
+### 5. Run tests
 
 ```powershell
-node .\agent\controller.js https://www.mozilla.org
+npm test
+npm run build
 ```
 
-Gemini is optional for the deterministic investigation and score, but required for the explanation layer.
+The controller can also run without the frontend:
+
+```powershell
+node .\agent\controller.js https://example.com
+```
 
 ## Demo targets
 
-- **Primary:** `https://www.mozilla.org`
-- **Backup:** `https://www.w3schools.com/html/html_forms.asp`
-- **Reliability fallback:** `https://example.com`
+| Purpose | URL |
+| --- | --- |
+| Primary evidence-rich demo | `https://www.mozilla.org` |
+| Forms-focused backup | `https://www.w3schools.com/html/html_forms.asp` |
+| Reliability fallback | `https://example.com` |
 
-## Important limitations
+Use `https://example.com` first when validating a new environment.
 
-- Hostname and tracking classifications can be heuristic.
-- Websites and their network behavior change over time.
-- PRISM is a privacy investigation aid, not a legal or compliance verdict.
-- Findings require human review before publication or consequential action.
+## Troubleshooting
+
+### `npm run prism:doctor` is missing
+
+Pull the current repair branch and install its dependencies:
+
+```powershell
+git switch codex/initial-prism-submission
+git pull
+npm install
+```
+
+### Webcmd reports `EPERM` inside `.webcmd`
+
+A stale Webcmd daemon may be holding its session file. Identify the relevant process before stopping anything:
+
+```powershell
+Get-CimInstance Win32_Process |
+Where-Object { $_.CommandLine -match '@agentrhq\\webcmd.*daemon' } |
+Select-Object ProcessId, ExecutablePath, CommandLine
+```
+
+Stop only the confirmed Webcmd daemon, then rerun the preflight:
+
+```powershell
+Stop-Process -Id <WEBCMD_DAEMON_PID> -Force
+npm run prism:doctor
+```
+
+Do not terminate unrelated Node processes such as an active Codex session.
+
+### Investigation succeeds but Gemini is unavailable
+
+Confirm that the root `.env` contains `GEMINI_API_KEY`, restart `npm run dev`, and investigate again. The deterministic report remains valid without Gemini.
 
 ## Repository structure
 
 ```text
-agent/       Investigation controller and conditional agent loop
+agent/       Controller, conditional investigation loop, and tests
 evidence/    Deterministic scoring and heuristic categorization
-webcmd/      Live browser exploration and interaction scripts
-src/         React frontend and report experience
+scripts/     Environment and Webcmd preflight
+webcmd/      Live-browser exploration and interaction scripts
+src/         React report interface
 server.js    Validated streaming API bridge
 ```
+
+## Built with
+
+- [Webcmd by AgentR](https://github.com/agentrhq/webcmd) — live browser and session foundation
+- Node.js and Express
+- React and Vite
+- Gemini API — constrained explanation layer only
+
+## Limitations
+
+- PRISM requires a machine or persistent container capable of running a browser daemon.
+- A public frontend URL alone cannot perform investigations.
+- Websites and their runtime integrations may change between runs.
+- Domain classifications are heuristic and do not prove tracking or misuse.
+- PRISM is an investigation aid, not a legal, compliance, or breach verdict.
+- Reports require human review before publication or consequential action.
 
 ## License
 
