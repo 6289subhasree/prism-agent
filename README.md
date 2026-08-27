@@ -6,17 +6,7 @@ PRISM is an evidence-first browser privacy investigation agent. It opens a real 
 
 ![PRISM investigation frontend](docs/screenshots/prism-hero.png)
 
-## Runtime status
-
-| Capability | Status |
-| --- | --- |
-| Live browser investigation | Working locally with Webcmd 0.7.8 |
-| Deterministic risk scoring | Working; no LLM involved |
-| Gemini explanation | Optional; graceful fallback when unavailable |
-| Hosted public demo | Not provided—PRISM requires a persistent browser daemon |
-| Recommended evaluation | Run locally using the instructions below |
-
-PRISM is intentionally documented as a **local browser-runtime application**, not a static hosted website. A Vercel-style frontend deployment would display the interface but could not create Webcmd sessions or perform genuine investigations. For a live evaluation, run the complete application locally.
+> PRISM runs locally because each investigation uses a live Webcmd browser session.
 
 ## Why PRISM
 
@@ -113,13 +103,6 @@ cd prism-agent
 npm install
 ```
 
-To evaluate the current repair branch before it is merged:
-
-```powershell
-git switch codex/initial-prism-submission
-npm install
-```
-
 Webcmd `0.7.8` is pinned as a project dependency; a separate global installation is not required.
 
 ### 2. Configure Gemini (optional)
@@ -130,7 +113,7 @@ Create a `.env` file in the repository root:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-The file is local-only and must not be committed. Without a key, PRISM still returns the captured evidence, deterministic score, breakdown, and agent decision; only the explanation layer degrades gracefully.
+The file is local-only and must not be committed. Without a key, the investigation and score still work; the report simply omits the Gemini explanation.
 
 ### 3. Verify the browser runtime
 
@@ -179,10 +162,9 @@ Use `https://example.com` first when validating a new environment.
 
 ### `npm run prism:doctor` is missing
 
-Pull the current repair branch and install its dependencies:
+Make sure the repository is up to date and reinstall its dependencies:
 
 ```powershell
-git switch codex/initial-prism-submission
 git pull
 npm install
 ```
@@ -230,8 +212,7 @@ server.js    Validated streaming API bridge
 
 ## Limitations
 
-- PRISM requires a machine or persistent container capable of running a browser daemon.
-- A public frontend URL alone cannot perform investigations.
+- Live investigations require a machine that can run the Webcmd browser daemon.
 - Websites and their runtime integrations may change between runs.
 - Domain classifications are heuristic and do not prove tracking or misuse.
 - PRISM is an investigation aid, not a legal, compliance, or breach verdict.
