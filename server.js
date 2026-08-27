@@ -2,12 +2,19 @@ const express = require("express");
 const path = require("path");
 const { spawn } = require("child_process");
 
+// Keep local credentials out of source control while making `npm run dev`
+// behave the same as a shell where GEMINI_API_KEY was exported explicitly.
+// Existing process variables win; a missing .env is fine.
+try {
+  process.loadEnvFile(path.join(__dirname, ".env"));
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+
 const app = express();
 const PORT = Number(process.env.PRISM_PORT || 8787);
 const FINAL_MARKER = "=== FINAL REPORT (pending human review before publishing) ===";
-const windowsWebcmdNode = "C:\\nvm\\v24.7.0\\node.exe";
-const controllerNode = process.env.PRISM_CONTROLLER_NODE ||
-  (process.platform === "win32" ? windowsWebcmdNode : process.execPath);
+const controllerNode = process.env.PRISM_CONTROLLER_NODE || process.execPath;
 
 app.use(express.json({ limit: "16kb" }));
 
