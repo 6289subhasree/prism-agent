@@ -30,7 +30,8 @@ const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 // happens via execFileSync's own `timeout` option, budgeted per-call
 // against a shared deadline below.
 const MAX_INVESTIGATION_TIME_MS = 90000;
-const GEMINI_TIMEOUT_MS = 15000;
+const GEMINI_MODEL = "gemini-3.7-flash";
+const GEMINI_TIMEOUT_MS = 25000;
 
 // Cleanup (closing the session) always gets a small fixed budget of its
 // own, even if the investigation budget is already exhausted — otherwise
@@ -290,14 +291,38 @@ Return ONLY JSON (no markdown, no prose) with this shape:
   let res;
   try {
     res = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" +
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=` +
         process.env.GEMINI_API_KEY,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" },
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                evidenceBullets: { type: "ARRAY", items: { type: "STRING" } },
+                reasoning: { type: "STRING" },
+                dataCollectionFindings: { type: "ARRAY", items: { type: "STRING" } },
+                findings: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      title: { type: "STRING" },
+                      evidence: { type: "STRING" },
+                      whyItMatters: { type: "STRING" },
+                      basis: { type: "STRING", enum: ["observed", "inferred"] },
+                    },
+                    required: ["title", "evidence", "whyItMatters", "basis"],
+                  },
+                },
+              },
+              required: ["evidenceBullets", "reasoning", "dataCollectionFindings", "findings"],
+            },
+          },
         }),
         signal: controller.signal,
       }
