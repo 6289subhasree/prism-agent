@@ -16,6 +16,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { scoreEvidence } = require("../evidence/scorer");
+const { orchestrateInvestigation } = require("./orchestrator");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
@@ -534,7 +535,7 @@ function investigate(targetUrl) {
   // the shared deadline, and Gemini has an AbortController timeout. Avoid a
   // Promise.race here: its losing timer keeps successful CLI runs alive and
   // cannot stop an already-running synchronous child process.
-  return runInvestigation(targetUrl);
+  return orchestrateInvestigation(targetUrl, { execute: runInvestigation });
 }
 
 async function main() {
