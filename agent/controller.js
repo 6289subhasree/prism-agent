@@ -431,6 +431,7 @@ async function runInvestigation(targetUrl) {
     try {
       consent = analyzeConsent(runPhase(sessionId, "webcmd/consent.js", targetUrl, Math.min(5000, requireTime("consent detection"))));
     } catch (error) {
+      console.error(`Warning: consent inspection failed: ${error.message}`);
       consent = { status: "unavailable", error: error.message };
     }
 
