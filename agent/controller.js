@@ -17,6 +17,7 @@ const fs = require("fs");
 const os = require("os");
 const { scoreEvidence } = require("../evidence/scorer");
 const { orchestrateInvestigation } = require("./orchestrator");
+const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
@@ -416,6 +417,7 @@ async function runInvestigation(targetUrl) {
     onWarning: (warning) => console.error(`Warning: ${warning}`),
   });
   let phase1, phase2 = null, plannerDecision;
+  let consent;
   const phases = [];
 
   await sessions.withSession(async (sessionId) => {
@@ -425,6 +427,12 @@ async function runInvestigation(targetUrl) {
     console.log(
       `  ${phase1.network.totalRequests} requests, ${phase1.network.uniqueThirdPartyDomains} unique third-party domains, ${phase1.forms.count} form(s)`
     );
+
+    try {
+      consent = analyzeConsent(runPhase(sessionId, "webcmd/consent.js", targetUrl, Math.min(5000, requireTime("consent detection"))));
+    } catch (error) {
+      consent = { status: "unavailable", error: error.message };
+    }
 
     console.log("● [DECIDE] Evaluating whether deeper investigation is warranted...");
     plannerDecision = decideIfDeeperInvestigationNeeded(phase1);
@@ -506,6 +514,7 @@ async function runInvestigation(targetUrl) {
       uniqueThirdPartyDomainsLabel: `${evidence.network.uniqueThirdPartyDomains} unique third-party domains`,
       requestsAcrossPhasesLabel: `${evidence.network.totalRequests} network request${evidence.network.totalRequests === 1 ? "" : "s"} observed across ${phases.length} investigation phase${phases.length === 1 ? "" : "s"}`,
     },
+    consent,
     runtimeWarnings: sessions.warnings,
     humanApprovalRequired: true,
   };
