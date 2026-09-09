@@ -221,3 +221,7 @@ server.js    Validated streaming API bridge
 ## License
 
 PRISM is available under the [MIT License](LICENSE).
+
+## Consent inspection
+
+PRISM reads visible cookie-banner controls during the initial browser session and shows their labels in the report. Accept, reject, and settings actions are inferred from explicit English labels; ambiguous labels stay unknown. It does not click controls or compare acceptance and rejection yet. Iframes and shadow DOM are outside this inspection. A missing banner is reported as not observed, not as proof of compliance.
