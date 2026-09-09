@@ -17,6 +17,7 @@ const fs = require("fs");
 const os = require("os");
 const { scoreEvidence } = require("../evidence/scorer");
 const { orchestrateInvestigation } = require("./orchestrator");
+const { createSessionManager } = require("./session-manager");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
@@ -154,29 +155,6 @@ function webcmd(args, timeoutMs) {
       : "";
     const summary = stderr.split(/\r?\n/).filter(Boolean).slice(-3).join(" ");
     throw new Error(summary || `Webcmd failed while running ${args.slice(0, 2).join(" ")}`);
-  }
-}
-
-function createSession(timeoutMs) {
-  const sessionName = `prism-${process.pid}-${Date.now()}`;
-  const out = parseJsonOutput(
-    webcmd(["session", "create", sessionName, "-f", "json"], timeoutMs),
-    "session create"
-  );
-  const sessionId = out.session || out.id || out.sessionId;
-  if (!sessionId) throw new Error("Webcmd did not return a session ID");
-  return sessionId;
-}
-
-function closeSession(sessionId) {
-  try {
-    // Fixed, generous-but-bounded budget: cleanup should never be skipped
-    // just because the investigation's own budget ran out, but it also
-    // shouldn't be allowed to hang forever.
-    webcmd(["session", "close", sessionId], SESSION_CLOSE_TIMEOUT_MS);
-  } catch (err) {
-    // Don't let a failed cleanup mask the real error / crash the process.
-    console.error("Warning: failed to close session cleanly:", err.message);
   }
 }
 
@@ -432,11 +410,15 @@ async function runInvestigation(targetUrl) {
   );
   console.log(`  Webcmd ${preflight.version} ready (${preflight.location})`);
 
-  const sessionId = createSession(requireTime("session create"));
+  const sessions = createSessionManager({
+    run: webcmd, parseJson: parseJsonOutput, remaining: requireTime,
+    closeTimeoutMs: SESSION_CLOSE_TIMEOUT_MS,
+    onWarning: (warning) => console.error(`Warning: ${warning}`),
+  });
   let phase1, phase2 = null, plannerDecision;
   const phases = [];
 
-  try {
+  await sessions.withSession(async (sessionId) => {
     console.log("✓ [OBSERVE] Running phase 1 exploration...");
     phase1 = runPhase(sessionId, "webcmd/explore.js", targetUrl, requireTime("phase 1 exploration"));
     phases.push({ phase: "initial", actions: phase1.actions || ["navigate", "inspect_dom", "capture_network"] });
@@ -457,10 +439,8 @@ async function runInvestigation(targetUrl) {
     } else {
       console.log(`  → ${plannerDecision.decision}: ${plannerDecision.reason}`);
     }
-  } finally {
-    closeSession(sessionId);
-    console.log("✓ Session closed.\n");
-  }
+  });
+  if (sessions.activeSessionIds.length === 0) console.log("✓ Session closed.\n");
 
   const evidence = mergeEvidence(phase1, phase2);
   const scoring = scoreEvidence(evidence);
@@ -526,6 +506,7 @@ async function runInvestigation(targetUrl) {
       uniqueThirdPartyDomainsLabel: `${evidence.network.uniqueThirdPartyDomains} unique third-party domains`,
       requestsAcrossPhasesLabel: `${evidence.network.totalRequests} network request${evidence.network.totalRequests === 1 ? "" : "s"} observed across ${phases.length} investigation phase${phases.length === 1 ? "" : "s"}`,
     },
+    runtimeWarnings: sessions.warnings,
     humanApprovalRequired: true,
   };
 }
