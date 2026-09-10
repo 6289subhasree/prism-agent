@@ -10,7 +10,7 @@ const snapshotSchema = z.object({
 function analyzeConsent(snapshot) {
   const evidence = snapshotSchema.parse(snapshot);
   const classify = (label) => {
-    if (/^(reject|decline)( all)?( cookies)?[.!]?$/i.test(label) || /^(only necessary|necessary only|use necessary cookies only)[.!]?$/i.test(label)) return 'reject';
+    if (/^(reject|decline|deny)( all)?( cookies)?[.!]?$/i.test(label) || /^(only necessary|necessary only|use necessary cookies only)[.!]?$/i.test(label)) return 'reject';
     if (/^(accept|allow)( all)?( cookies)?[.!]?$/i.test(label)) return 'accept';
     if (/^(manage|customi[sz]e|cookie|consent|privacy)( cookie| consent)? (settings|preferences|options)[.!]?$/i.test(label) || /^customi[sz]e$/i.test(label)) return 'settings';
     return 'unknown';
