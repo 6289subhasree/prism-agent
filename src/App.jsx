@@ -114,7 +114,7 @@ function Report({ report, onReset }) {
       <div><div className="eyebrow">INFERRED / HEURISTIC</div><h3>PATTERNS,<br/>NOT VERDICTS.</h3><p>Hostname classifications are pattern matches. They do not prove tracking or a privacy violation.</p></div>
       <div className="domain-list">{inferred.length ? inferred.map(x => <div key={x.domain}><span>{x.domain}</span><em>{x.category} · {x.confidence} confidence</em></div>) : <p>No known tracking-indicator patterns matched.</p>}</div>
     </section>
-    {report.consent && <section className="proof">
+    {report.consent && <section className="proof consent-proof">
       <div><div className="eyebrow">CONSENT CONTROLS</div><h3>COOKIE CHOICES.</h3><p>{report.consent.status === "unavailable" ? "Consent inspection was unavailable for this run." : report.consent.status === "detected" ? "These controls were observed. No consent choice was clicked." : "No consent banner was observed in the inspected document."}</p><p>English labels only. Iframes and shadow DOM are not inspected. Actions are inferred from labels; banner absence is not a compliance verdict.</p></div>
       <div className="domain-list">{report.consent.status === "unavailable" && <p role="status">Reason: {report.consent.error || "No error detail was returned."}</p>}{report.consent.controls?.map((control, i) => <div key={i}><span>{control.label}</span><em>{control.inferredAction.toUpperCase()} · INFERRED</em></div>)}</div>
     </section>}
