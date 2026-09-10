@@ -69,3 +69,11 @@ body[data-capture-scene] .story .scene{display:none}body[data-capture-scene="1"]
 .inference .domain-list>div span{font-size:11px;line-height:1.4}
 .inference .domain-list>div em{font-size:8px;line-height:1.5;letter-spacing:.06em}
 @media(max-width:800px){.explanation-unavailable h3{font-size:clamp(34px,10vw,44px)}}
+
+/* Consent labels and action tags need two columns, not the numbered domain layout. */
+.consent-proof{grid-template-columns:minmax(0,42fr) minmax(0,58fr);gap:32px}
+.consent-proof .domain-list{min-width:0}
+.consent-proof .domain-list>div{grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
+.consent-proof .domain-list>div>span{min-width:0;overflow-wrap:anywhere;font-size:12px;line-height:1.6}
+.consent-proof .domain-list>div>em{font-size:10px;line-height:1.8;white-space:nowrap;color:#a6abaa}
+@media(max-width:700px){.consent-proof{grid-template-columns:minmax(0,1fr);gap:24px}.consent-proof .domain-list>div{grid-template-columns:minmax(0,1fr);gap:6px}}
