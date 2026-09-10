@@ -36,3 +36,8 @@ test('browser collector excludes hidden controls and deduplicates nested banners
   assert.equal(result.controls.length, 1);
   assert.equal(result.controls[0].label, 'Accept all');
 });
+
+test('Deny is a rejection action but unrelated denial text stays unknown', () => {
+  const result = analyzeConsent({ ...base, controls: ['Deny', 'Deny all cookies', 'Deny access to account'].map(label => ({ bannerIndex: 0, label })) });
+  assert.deepEqual(result.controls.map(c => c.inferredAction), ['reject', 'reject', 'unknown']);
+});
