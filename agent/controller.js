@@ -17,6 +17,7 @@ const fs = require("fs");
 const os = require("os");
 const { scoreEvidence } = require("../evidence/scorer");
 const { orchestrateInvestigation } = require("./orchestrator");
+const { compareConsent } = require("./consent-comparison");
 const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
 
@@ -159,7 +160,7 @@ function webcmd(args, timeoutMs) {
   }
 }
 
-function runPhase(sessionId, scriptRelPath, url, timeoutMs) {
+function runPhase(sessionId, scriptRelPath, url, timeoutMs, options = {}) {
   const scriptPath = path.join(
     __dirname,
     "..",
@@ -172,7 +173,8 @@ function runPhase(sessionId, scriptRelPath, url, timeoutMs) {
   if (!originalSource.includes(placeholder)) {
     throw new Error(`Browser script is missing its URL placeholder: ${scriptRelPath}`);
   }
-  const patchedSource = originalSource.replaceAll(placeholder, JSON.stringify(url));
+  const patchedSource = originalSource.replaceAll(placeholder, JSON.stringify(url))
+    .replaceAll('"__PRISM_CHOICE__"', JSON.stringify(options.choice || ""));
 
   const tempPath = path.join(
     os.tmpdir(),
@@ -184,7 +186,7 @@ function runPhase(sessionId, scriptRelPath, url, timeoutMs) {
   fs.writeFileSync(tempPath, patchedSource, "utf8");
 
   try {
-    const raw = webcmd(
+    const raw = (options.run || webcmd)(
       [
         "--session",
         sessionId,
@@ -201,7 +203,7 @@ function runPhase(sessionId, scriptRelPath, url, timeoutMs) {
       timeoutMs
     );
 
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonOutput(raw, "browser run");
     return parsed.result ?? parsed;
   } finally {
     try {
@@ -477,8 +479,18 @@ async function runInvestigation(targetUrl) {
     };
   }
 
-  
+  const consentComparison = process.env.PRISM_COMPARE_CONSENT === "1"
+    ? await compareConsent({
+        run: webcmd, parseJson: parseJsonOutput,
+        runExperiment: ({ sessionId, choice, run, timeoutMs }) => {
+          console.log(`[CONSENT] Testing ${choice} in a fresh browser profile...`);
+          return runPhase(sessionId, "webcmd/consent-experiment.js", targetUrl, timeoutMs, { run, choice });
+        },
+      })
+    : { status: "disabled", runs: [] };
+
   return {
+    consentComparison,
     investigatedUrl: targetUrl,
     generatedAt: new Date().toISOString(),
     agentLoop: {

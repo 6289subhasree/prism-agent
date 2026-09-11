@@ -224,4 +224,17 @@ PRISM is available under the [MIT License](LICENSE).
 
 ## Consent inspection
 
-PRISM reads visible cookie-banner controls during the initial browser session and shows their labels in the report. Accept, reject, and settings actions are inferred from explicit English labels; ambiguous labels stay unknown. It does not click controls or compare acceptance and rejection yet. Iframes and shadow DOM are outside this inspection. A missing banner is reported as not observed, not as proof of compliance.
+PRISM reads visible cookie-banner controls during the initial browser session and shows their labels in the report. Accept, reject, and settings actions are inferred from explicit English labels; ambiguous labels stay unknown. By default this inspection does not click controls. An optional comparison mode is described below. Iframes and shadow DOM are outside this inspection. A missing banner is reported as not observed, not as proof of compliance.
+
+## Optional accept/reject comparison
+
+In PowerShell, before starting the server:
+
+```powershell
+$env:PRISM_COMPARE_CONSENT="1"
+npm run dev
+```
+
+Each investigation then attempts reject and accept in separate, newly created Webcmd profiles. It clicks only a single explicit matching button within a visible consent container. Ambiguous or missing choices are skipped. A comparison is shown only when both runs complete and the clicked controls disappear. It reports third-party traffic over a three-second window after each click, without changing the original risk score. The runs are sequential; differences can reflect timing and site variability, and do not establish that consent was honored.
+
+Comparison has a separate 60-second work budget plus bounded session cleanup, so it extends the original investigation duration. Webcmd 0.7.8 retains generated profile directories locally; this mode is opt-in to avoid creating profiles during every normal investigation. Browser sessions are closed after each attempt. Stop the server and use `$env:PRISM_COMPARE_CONSENT="0"` to disable it.
