@@ -238,3 +238,9 @@ npm run dev
 Each investigation then attempts reject and accept in separate, newly created Webcmd profiles. It clicks only a single explicit matching button within a visible consent container. Ambiguous or missing choices are skipped. A comparison is shown only when both runs complete and the clicked controls disappear. It reports third-party traffic over a three-second window after each click, without changing the original risk score. The runs are sequential; differences can reflect timing and site variability, and do not establish that consent was honored.
 
 Comparison has a separate 60-second work budget plus bounded session cleanup, so it extends the original investigation duration. Webcmd 0.7.8 retains generated profile directories locally; this mode is opt-in to avoid creating profiles during every normal investigation. Browser sessions are closed after each attempt. Stop the server and use `$env:PRISM_COMPARE_CONSENT="0"` to disable it.
+
+### Inspecting and saving a report
+
+After an investigation, use **Download JSON** at the top of the report to save the complete result, including the investigated URL, report timestamp, evidence, score, explanation, and any consent comparison results and limitations. The file is created in your browser; no upload is needed. Review its contents before sharing it.
+
+With consent comparison enabled, expand **Domains after reject** or **Domains after accept** to inspect each run. Two additional lists show domains observed only in one run. Failed or skipped experiments keep their reason visible and do not produce a comparison. The request difference is accept minus reject, measured over the short observation windows; it is not a compliance verdict.

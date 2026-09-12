@@ -77,3 +77,24 @@ body[data-capture-scene] .story .scene{display:none}body[data-capture-scene="1"]
 .consent-proof .domain-list>div>span{min-width:0;overflow-wrap:anywhere;font-size:12px;line-height:1.6}
 .consent-proof .domain-list>div>em{font-size:10px;line-height:1.8;white-space:nowrap;color:#a6abaa}
 @media(max-width:700px){.consent-proof{grid-template-columns:minmax(0,1fr);gap:24px}.consent-proof .domain-list>div{grid-template-columns:minmax(0,1fr);gap:6px}}
+
+/* Inspect and download the evidence behind consent comparisons. */
+.report-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:18px}
+.comparison-results{min-width:0}
+.comparison-run{padding:24px 0;border-top:1px solid #303534}
+.comparison-run header{display:flex;justify-content:space-between;gap:16px;align-items:baseline;font:12px 'DM Mono',monospace}
+.comparison-run h4{margin:0;font:inherit;letter-spacing:.12em}
+.comparison-run header span{color:#a6abaa}
+.comparison-results .comparison-count{font-size:16px;margin:18px 0 8px}
+.comparison-count strong{font-size:28px;font-weight:500}
+.comparison-results .comparison-note{font-size:13px;line-height:1.6;margin:8px 0;color:#a6abaa;overflow-wrap:anywhere}
+.comparison-domains{border-top:1px solid #303534;margin-top:16px;font:13px 'DM Mono',monospace}
+.comparison-domains summary{cursor:pointer;padding:16px 0;line-height:1.6}
+.comparison-domains summary span{color:#a6abaa}
+.comparison-domains summary:focus-visible,.report-actions button:focus-visible{outline:2px solid #69d9ca;outline-offset:5px}
+.comparison-domains ul{margin:0 0 16px;padding-left:20px;max-height:320px;overflow:auto}
+.comparison-domains li{padding:7px 0;overflow-wrap:anywhere;line-height:1.6}
+.comparison-results .comparison-domains p{font-size:13px;margin:0 0 16px}
+.comparison-difference{padding-top:16px;border-top:1px solid #303534}
+.comparison-difference>p{font-size:18px;line-height:1.6}
+@media(max-width:700px){.report-nav{align-items:flex-start;gap:20px}.report-actions{gap:14px;flex-direction:column;align-items:flex-end}.comparison-run header{flex-wrap:wrap}}

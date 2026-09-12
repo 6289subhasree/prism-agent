@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ConsentComparison, downloadReport } from "./ReportTools.jsx";
 import prismHero from "./assets/prism-hero.jpg";
 
 const STEPS = ["OBSERVE", "DECIDE", "ACT", "OBSERVE", "SCORE", "EXPLAIN"];
@@ -95,7 +96,7 @@ function Report({ report, onReset }) {
   const { evidence, scoring, agentLoop, explanation } = report;
   const inferred = scoring.trackingIndicatorDomains || [];
   return <main className="report" id="report">
-    <header className="report-nav"><a href="#top" className="brand">PRISM<i/></a><button onClick={onReset}>NEW INVESTIGATION ↗</button></header>
+    <header className="report-nav"><a href="#top" className="brand">PRISM<i/></a><div className="report-actions"><button onClick={() => downloadReport(report)}>DOWNLOAD JSON ↓</button><button onClick={onReset}>NEW INVESTIGATION ↗</button></div></header>
     <section className="verdict">
       <div className="report-kicker">DETERMINISTIC EVIDENCE REPORT <span>·</span> {new URL(report.investigatedUrl).hostname}</div>
       <div className="score"><strong>{scoring.score}</strong><span>/100</span></div>
@@ -118,12 +119,7 @@ function Report({ report, onReset }) {
       <div><div className="eyebrow">CONSENT CONTROLS</div><h3>COOKIE CHOICES.</h3><p>{report.consent.status === "unavailable" ? "Consent inspection was unavailable for this run." : report.consent.status === "detected" ? "These controls were observed. No consent choice was clicked." : "No consent banner was observed in the inspected document."}</p><p>English labels only. Iframes and shadow DOM are not inspected. Actions are inferred from labels; banner absence is not a compliance verdict.</p></div>
       <div className="domain-list">{report.consent.status === "unavailable" && <p role="status">Reason: {report.consent.error || "No error detail was returned."}</p>}{report.consent.controls?.map((control, i) => <div key={i}><span>{control.label}</span><em>{control.inferredAction.toUpperCase()} · INFERRED</em></div>)}</div>
     </section>}
-    {report.consentComparison && report.consentComparison.status !== "disabled" && <section className="proof consent-proof">
-      <div><div className="eyebrow">CONSENT COMPARISON</div><h3>AFTER THE CHOICE.</h3><p>Accept and reject were attempted in separate fresh profiles. Traffic is observed for three seconds after each click. Differences between sequential runs do not prove causation or compliance.</p></div>
-      <div className="domain-list">{report.consentComparison.runs.map(run => <div key={run.choice}><span>{run.choice.toUpperCase()}: {run.status}{run.status === "observed" ? ` · ${run.afterRequests} third-party requests · ${run.afterDomains.length} domains` : ` · ${run.reason}`}{run.status === "observed" && !run.controlDismissed && " · clicked control remained visible; comparison withheld"}</span><em>{run.clickedLabel || "NO CONFIRMED CLICK"}</em></div>)}
-      {report.consentComparison.comparison && <p>Domains seen only after accept: {report.consentComparison.comparison.acceptOnlyDomains.join(", ") || "none"}. Request difference (accept minus reject): {report.consentComparison.comparison.requestDifference}.</p>}
-      </div>
-    </section>}
+    <ConsentComparison result={report.consentComparison} />
     <section className="loop-result"><div className="eyebrow">AGENT DECISION</div><h3>OBSERVE → DECIDE → {agentLoop.phase2Ran ? "ACT → OBSERVE → " : "SUFFICIENT → "}SCORE</h3><p>{agentLoop.plannerDecision.reason}</p>{agentLoop.phase2Ran && <span>DEEP INVESTIGATION PERFORMED IN THE SAME SESSION</span>}</section>
     <section className={`explanation ${explanation.status === "unavailable" ? "explanation-unavailable" : ""}`}><div className="eyebrow">GEMINI / EXPLANATION LAYER</div>{explanation.status === "unavailable" ? <><h3>AI explanation unavailable.</h3><p>The deterministic investigation and score remain valid.</p><small className="explanation-status">Evidence analysis completed successfully.</small></> : <><h3>THE EVIDENCE,<br/>IN PLAIN LANGUAGE.</h3><p>{explanation.reasoning}</p><ul>{explanation.evidenceBullets?.map(x => <li key={x}>{x}</li>)}</ul></>}</section>
     {report.humanApprovalRequired && <footer className="review"><span><i/> PENDING HUMAN REVIEW</span><p>Evidence has been collected and scored. Review findings before publishing or taking consequential action.</p></footer>}
