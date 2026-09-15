@@ -8,6 +8,20 @@ PRISM is an evidence-first browser privacy investigation agent. It opens a real 
 
 > PRISM runs locally because each investigation uses a live Webcmd browser session.
 
+## Reviewer walkthrough
+
+**Focus:** a browser investigation workflow that gathers evidence, decides whether another observation is useful, and produces an inspectable report.
+
+1. Follow the local setup below and run `npm run prism:doctor`.
+2. Investigate `https://example.com` to check the browser runtime.
+3. Investigate a richer public page and inspect the reason for performing or skipping a deeper pass.
+4. Compare the evidence with the deterministic score breakdown, then download the JSON report.
+5. Optionally enable the accept/reject experiment described below and inspect both the observed domains and any skipped-run reasons.
+
+**Read the implementation:** [controller](agent/controller.js), [consent comparison](agent/consent-comparison.js), [scoring](evidence/scorer.js), and [controller tests](agent/controller.test.js).
+
+**Evidence boundary:** this is a conditional investigation workflow; the README does not claim a team of independently reasoning agents. Gemini explains a score calculated by code. A traffic difference is an observation, not proof of consent compliance.
+
 ## Why PRISM
 
 Static source inspection, privacy-policy summaries, and LLM-only assessments can miss what a browser actually does at runtime. PRISM instead:
