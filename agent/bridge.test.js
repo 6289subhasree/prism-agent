@@ -59,3 +59,10 @@ test('bridge preserves streamed stage failure before the terminal API error', ()
   assert.equal(f.messages[1].event.error.code, 'TIMEOUT');
   assert.match(f.messages[2].error, /browser timeout/);
 });
+
+test('bridge forwards partial-stage reasons unchanged', () => {
+  const f = bridge();
+  const partial = { ...event, type: 'agent.partial', warnings: ['reject: No unambiguous visible control; no click performed'] };
+  f.child.stdout.write(WORKFLOW_PREFIX + JSON.stringify(partial) + '\n');
+  assert.deepEqual(f.messages[1].event, partial);
+});

@@ -80,6 +80,8 @@ The orchestrator runs four stages in order:
 
 The UI shows each stage as pending, running, completed, partial, failed, or skipped. Stages after a required failure are shown as not run. Completed stages include elapsed time. The same event sequence and stage results are saved in the downloaded JSON under `workflow`.
 
+Partial stages show their recorded reasons, including consent inspection errors, skipped comparison choices, and session cleanup warnings. A skipped choice is not evidence that the website lacks that choice.
+
 Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second comparison budget and independent cleanup timeouts.
 
 ## Evidence-first scoring

@@ -11,6 +11,19 @@ function normalizeError(error) {
   };
 }
 
+function comparisonWarnings(value) {
+  return (value.runs || []).flatMap(run => {
+    const reasons = [...(run.warnings || [])];
+    if (run.reason) reasons.push(run.reason);
+    else if (["failed", "skipped"].includes(run.status)) reasons.push(`Run ${run.status}`);
+    if (run.status === "observed") {
+      if (run.controlDismissed !== true) reasons.push("Consent control dismissal was not confirmed");
+      if (run.observationMs !== 3000) reasons.push("The full three-second observation was not confirmed");
+    }
+    return [...new Set(reasons)].map(reason => `${run.choice}: ${reason}`);
+  });
+}
+
 // Deterministic stages have explicit inputs and outputs. Only the explanation
 // adapter uses an LLM; stage count is not a claim of independent AI agents.
 async function orchestrateInvestigation(targetUrl, options) {
@@ -54,15 +67,16 @@ async function orchestrateInvestigation(targetUrl, options) {
       }
       value = config.fallback(error);
     }
+    const warnings = config.skip ? [] : config.warnings?.(value) || [];
     agents.push(validateAgentResult({
       schemaVersion: AGENT_RESULT_SCHEMA_VERSION, investigationId, agentId,
       status, startedAt: stageStartedAt, completedAt: now().toISOString(),
       evidenceRefs: status === "failed" || status === "skipped" ? [] : config.refs || [],
-      warnings: config.warnings?.(value) || [],
+      warnings,
       ...(error ? { error } : {}),
     }));
     const type = status === "skipped" ? "agent.skipped" : status === "failed" ? "agent.failed" : status === "partial" ? "agent.partial" : "agent.completed";
-    emit({ type, agentId, detail: config.skip || `${detail}: ${status}`, ...(error ? { error } : {}) });
+    emit({ type, agentId, detail: config.skip || `${detail}: ${status}`, ...(warnings.length ? { warnings } : {}), ...(error ? { error } : {}) });
     return value;
   }
   emit({ type: "workflow.started", detail: "Investigation started" });
@@ -77,13 +91,14 @@ async function orchestrateInvestigation(targetUrl, options) {
       optional: true, skip: options.explanationEnabled === false ? "Gemini is not configured" : null,
       refs: ["report.explanation"],
       outcome: value => value.status === "unavailable" ? "partial" : "completed",
+      warnings: value => value.status === "unavailable" ? [value.reasoning || "Explanation unavailable"] : [],
       fallback: () => ({ status: "unavailable", evidenceBullets: [], reasoning: "The optional explanation is unavailable. Observed evidence and deterministic scoring are retained.", dataCollectionFindings: [], findings: [] }),
     });
     const consentComparison = await stage("consent-comparison", "Comparing reject and accept", () => options.compareConsent(targetUrl), {
       optional: true, skip: options.comparisonEnabled ? null : "Consent comparison is disabled",
       refs: ["report.consentComparison"],
-      outcome: value => value.status === "completed" ? "completed" : "partial",
-      warnings: value => value.runs.flatMap(run => run.warnings || []),
+      outcome: value => value.status === "completed" && !comparisonWarnings(value).length ? "completed" : "partial",
+      warnings: comparisonWarnings,
       fallback: error => error ? { status: "partial", runs: [], comparison: null, error: error.message } : { status: "disabled", runs: [] },
     });
     const status = agents.some(agent => ["partial", "failed"].includes(agent.status)) ? "partial" : "completed";

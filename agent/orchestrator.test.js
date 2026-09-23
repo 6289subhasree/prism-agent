@@ -105,6 +105,37 @@ test("consent detection and session cleanup warnings produce a partial browser s
   assert.equal(report.workflow.agents[0].status, "partial");
   assert.deepEqual(report.workflow.agents[0].warnings, ["Session close failed", "inspection timeout"]);
   assert.equal(report.workflow.status, "partial");
+  const event = f.events.find(e => e.type === "agent.partial" && e.agentId === "browser-evidence");
+  assert.deepEqual(event.warnings, report.workflow.agents[0].warnings);
+  assert.deepEqual(parseWorkflowLine(WORKFLOW_PREFIX + JSON.stringify(event)), event);
+  const { workflowRows } = await import("../src/workflow.mjs");
+  assert.match(workflowRows(report.workflow.events)[0].detail, /Session close failed; inspection timeout/);
+});
+
+test("skipped comparison reasons reach the UI without discarding the observed choice", async () => {
+  const comparison = { status: "partial", comparison: null, runs: [
+    { choice: "reject", status: "skipped", reason: "No unambiguous visible control; no click performed" },
+    { choice: "accept", status: "observed", afterRequests: 51, controlDismissed: true, observationMs: 3000 },
+  ] };
+  const report = await run(fixture({ compareConsent: async () => comparison }));
+  const { workflowRows } = await import("../src/workflow.mjs");
+  assert.equal(workflowRows(report.workflow.events)[3].detail, "reject: No unambiguous visible control; no click performed");
+  assert.equal(report.consentComparison.runs[1].afterRequests, 51);
+  assert.equal(report.consentComparison.comparison, null);
+});
+
+test("unconfirmed dismissal and cleanup warnings are visible even when traffic was captured", async () => {
+  const comparison = { status: "partial", runs: [
+    { choice: "reject", status: "observed", controlDismissed: false, observationMs: 3000 },
+    { choice: "accept", status: "observed", controlDismissed: true, observationMs: 3000, warnings: ["Session close failed"] },
+  ] };
+  const report = await run(fixture({ compareConsent: async () => comparison }));
+  assert.deepEqual(report.workflow.agents[3].warnings, ["reject: Consent control dismissal was not confirmed", "accept: Session close failed"]);
+  comparison.status = "completed";
+  comparison.runs[0].controlDismissed = true;
+  const cleanup = await run(fixture({ compareConsent: async () => comparison }));
+  assert.equal(cleanup.workflow.agents[3].status, "partial");
+  assert.equal(cleanup.consentComparison.status, "completed");
 });
 
 test("broken progress consumer cannot discard investigation results", async () => {

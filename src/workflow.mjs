@@ -15,7 +15,8 @@ export function workflowRows(events = []) {
     const status = states[event.type.slice(6)];
     if (!status) continue;
     row.status = status;
-    row.detail = event.error?.message || event.detail || status;
+    row.warnings = event.warnings || [];
+    row.detail = event.error?.message || row.warnings.join("; ") || event.detail || status;
     if (status === "running") row.startedAt = event.at;
     else if (row.startedAt) row.durationSeconds = Math.max(0, (Date.parse(event.at) - Date.parse(row.startedAt)) / 1000);
   }

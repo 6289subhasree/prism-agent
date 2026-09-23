@@ -22,6 +22,7 @@ const workflowEventSchema = z.object({
   at: isoTimestamp,
   agentId: z.string().min(1).optional(),
   detail: z.string().min(1).optional(),
+  warnings: z.array(z.string().min(1)).optional(),
   error: z.object({
     code: z.string().min(1),
     message: z.string().min(1),
