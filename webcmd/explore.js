@@ -32,12 +32,29 @@ await page.goto(url, {
 
 await page.waitForTimeout(3000);
 
-const resolvedForms = await page.evaluate(({ targetUrl, targetDomain }) => {
-  return Array.from(document.querySelectorAll("form")).map((form) => ({
+const resolvedForms = await page.evaluate(() => {
+  const pageDomain = new URL(document.URL).hostname.toLowerCase();
+  return Array.from(document.querySelectorAll("form")).map((form) => {
+    const action = form.getAttribute("action");
+    const method = (form.getAttribute("method") || "get").toLowerCase();
+    let resolvedAction = null, actionKind = "invalid", externalDestination = false;
+    try {
+      // Empty actions target the current document, even with a <base> tag.
+      // Explicit relative actions use document.baseURI, including after redirects.
+      const destination = new URL(action === null || action === "" ? document.URL : action, document.baseURI);
+      resolvedAction = destination.href;
+      actionKind = ["http:", "https:"].includes(destination.protocol) ? "http" : "non-http";
+      if (destination.protocol === "javascript:") actionKind = "script-handler";
+      if (method === "dialog") actionKind = "dialog";
+      externalDestination = actionKind === "http" && destination.hostname.toLowerCase() !== pageDomain;
+    } catch { /* Keep malformed actions as unknown evidence; do not abort collection. */ }
+    // An action attribute does not reveal where JavaScript may send form data.
+    return {
     action: form.getAttribute("action") || null,
-    method: (form.getAttribute("method") || "get").toLowerCase(),
-    resolvedAction: new URL(form.getAttribute("action") || "", targetUrl).href,
-    externalDestination: new URL(form.getAttribute("action") || "", targetUrl).hostname.toLowerCase() !== targetDomain,
+    method,
+    resolvedAction,
+    actionKind,
+    externalDestination,
     inputs: Array.from(
       form.querySelectorAll("input, textarea")
     ).map((el) => ({
@@ -47,8 +64,9 @@ const resolvedForms = await page.evaluate(({ targetUrl, targetDomain }) => {
         el.getAttribute("id") ||
         null,
     })),
-  }));
-}, { targetUrl: url, targetDomain: mainDomain });
+    };
+  });
+});
 
 const SENSITIVE_TYPES = ["email", "tel", "password"];
 

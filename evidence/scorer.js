@@ -38,11 +38,11 @@ function scoreExternalForms(forms) {
   if (externalForms.length > 0) {
     return {
       points: 20,
-      reason: `${externalForms.length} form(s) submit to an external domain`,
+      reason: `${externalForms.length} form(s) have an HTTP(S) action on an external hostname; submission not tested`,
       externalForms,
     };
   }
-  return { points: 0, reason: "No forms submit to an external domain", externalForms: [] };
+  return { points: 0, reason: "No external HTTP(S) form actions observed; JavaScript submission destinations are not determined from action attributes", externalForms: [] };
 }
 
 function scoreSensitiveInputs(forms) {
