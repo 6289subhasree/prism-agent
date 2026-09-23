@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const { spawn } = require("child_process");
+const { parseWorkflowLine } = require("./agent/progress");
 
 // Keep local credentials out of source control while making `npm run dev`
 // behave the same as a shell where GEMINI_API_KEY was exported explicitly.
@@ -40,7 +41,7 @@ app.post("/api/investigate", (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.flushHeaders();
 
-  const send = (payload) => res.write(`${JSON.stringify(payload)}\n`);
+  const send = (payload) => { if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(payload)}\n`); };
   send({ type: "started", url: target, at: new Date().toISOString() });
 
   const child = spawn(controllerNode, [path.join(__dirname, "agent", "controller.js"), target], {
@@ -58,6 +59,8 @@ app.post("/api/investigate", (req, res) => {
     if (!seen.has(id)) { seen.add(id); send({ type: "phase", id, label, detail }); }
   };
   const inspectLine = (line) => {
+    const event = parseWorkflowLine(line);
+    if (event) { send({ type: "workflow", event }); return; }
     if (line.includes("[OBSERVE]")) phase("observe-1", "OBSERVE", "Inspecting the live page, DOM and network activity");
     if (line.includes("[DECIDE]")) phase("decide", "DECIDE", "Evaluating whether the evidence warrants a deeper pass");
     if (line.includes("DEEP_INVESTIGATION")) phase("act", "ACT", "Deeper investigation selected — scrolling the same browser session");
@@ -66,6 +69,8 @@ app.post("/api/investigate", (req, res) => {
     if (line.includes("[EXPLAIN]")) phase("explain", "EXPLAIN", "Narrating the already-computed result");
   };
 
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
     const text = chunk.toString(); stdout += text; lineBuffer += text;
     const lines = lineBuffer.split(/\r?\n/); lineBuffer = lines.pop() || "";

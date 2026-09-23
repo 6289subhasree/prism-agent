@@ -41,7 +41,7 @@ export function ConsentComparison({ result }) {
         <p><strong>{comparison.requestDifference > 0 ? "+" : ""}{comparison.requestDifference}</strong> requests after accept compared with reject</p>
         <DomainList label="Domains only in the accept run" domains={comparison.acceptOnlyDomains} />
         <DomainList label="Domains only in the reject run" domains={comparison.rejectOnlyDomains} />
-      </div> : <p>Comparison unavailable: both choices need a completed observation and a dismissed control. Available results are shown above.</p>}
+      </div> : <p>{result.error || "Comparison unavailable: both choices need a completed observation and a dismissed control. Available results are shown above."}</p>}
       {result.limitations?.length > 0 && <details className="comparison-domains"><summary>How to read these results</summary><ul>{result.limitations.map(text => <li key={text}>{text}</li>)}</ul></details>}
     </div>
   </section>;

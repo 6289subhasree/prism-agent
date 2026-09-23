@@ -18,6 +18,7 @@ const os = require("os");
 const { scoreEvidence } = require("../evidence/scorer");
 const { orchestrateInvestigation } = require("./orchestrator");
 const { compareConsent } = require("./consent-comparison");
+const { WORKFLOW_PREFIX } = require("./progress");
 const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
 
@@ -391,21 +392,9 @@ Return ONLY JSON (no markdown, no prose) with this shape:
   return JSON.parse(text);
 }
 
-async function runInvestigation(targetUrl) {
+async function collectBrowserEvidence(targetUrl, requireTime) {
   assertValidUrl(targetUrl);
   console.log(`\n🔎 LeakLens investigating: ${targetUrl}\n`);
-
-  // Single shared deadline for the whole investigation. Every step below
-  // spends against it via requireTime(), which is what makes
-  // MAX_INVESTIGATION_TIME_MS an enforced ceiling rather than aspirational.
-  const deadline = Date.now() + MAX_INVESTIGATION_TIME_MS;
-  function requireTime(step) {
-    const r = deadline - Date.now();
-    if (r <= 0) {
-      throw new Error(`Investigation timed out after ${MAX_INVESTIGATION_TIME_MS / 1000}s (ran out of time before: ${step})`);
-    }
-    return r;
-  }
 
   console.log("● [PREFLIGHT] Checking Webcmd and browser runtime...");
   const preflight = preflightWebcmd(
@@ -454,43 +443,7 @@ async function runInvestigation(targetUrl) {
   if (sessions.activeSessionIds.length === 0) console.log("✓ Session closed.\n");
 
   const evidence = mergeEvidence(phase1, phase2);
-  const scoring = scoreEvidence(evidence);
-
-  console.log(`[SCORE] Deterministic risk score: ${scoring.score}/100 (${scoring.level})`);
-  scoring.breakdown.forEach((b) => console.log(`   - ${b.component}: +${b.points} (${b.reason})`));
-
-  console.log("\n[EXPLAIN] Asking Gemini to narrate the evidence (not the score)...\n");
-  let explanation;
-  try {
-    explanation = await explainWithGemini(
-      evidence,
-      scoring,
-      plannerDecision,
-      requireTime("Gemini explanation")
-    );
-  } catch (err) {
-    console.error(`Warning: Gemini explanation unavailable: ${err.message}`);
-    explanation = {
-      status: "unavailable",
-      evidenceBullets: [],
-      reasoning: "The deterministic investigation and score completed, but the optional Gemini explanation was unavailable.",
-      dataCollectionFindings: [],
-      findings: [],
-    };
-  }
-
-  const consentComparison = process.env.PRISM_COMPARE_CONSENT === "1"
-    ? await compareConsent({
-        run: webcmd, parseJson: parseJsonOutput,
-        runExperiment: ({ sessionId, choice, run, timeoutMs }) => {
-          console.log(`[CONSENT] Testing ${choice} in a fresh browser profile...`);
-          return runPhase(sessionId, "webcmd/consent-experiment.js", targetUrl, timeoutMs, { run, choice });
-        },
-      })
-    : { status: "disabled", runs: [] };
-
   return {
-    consentComparison,
     investigatedUrl: targetUrl,
     generatedAt: new Date().toISOString(),
     agentLoop: {
@@ -511,8 +464,6 @@ async function runInvestigation(targetUrl) {
       investigationPhases: phases, // "🤖 Agent performed N investigation phases."
     },
     evidence,
-    scoring,
-    explanation,
     // Pre-formatted, correctly-labeled strings for the frontend so wording
     // discipline (requests observed != trackers/leaks found) lives in one
     // place instead of being re-derived per UI. Prefer these over composing
@@ -533,12 +484,30 @@ async function runInvestigation(targetUrl) {
   };
 }
 
-function investigate(targetUrl) {
-  // Each synchronous Webcmd call has an execFileSync timeout derived from
-  // the shared deadline, and Gemini has an AbortController timeout. Avoid a
-  // Promise.race here: its losing timer keeps successful CLI runs alive and
-  // cannot stop an already-running synchronous child process.
-  return orchestrateInvestigation(targetUrl, { execute: runInvestigation });
+function investigate(targetUrl, options = {}) {
+  // Baseline browser + explanation retain the existing shared deadline.
+  // Consent comparison has its own bounded budget and fresh profiles.
+  const deadline = Date.now() + MAX_INVESTIGATION_TIME_MS;
+  const requireTime = step => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`Investigation timed out after ${MAX_INVESTIGATION_TIME_MS / 1000}s (before ${step})`);
+    return remaining;
+  };
+  return orchestrateInvestigation(targetUrl, {
+    collectEvidence: url => collectBrowserEvidence(url, requireTime),
+    scoreEvidence,
+    explanationEnabled: Boolean(process.env.GEMINI_API_KEY),
+    explain: (evidence, scoring, decision) => explainWithGemini(evidence, scoring, decision, requireTime("Gemini explanation")),
+    comparisonEnabled: process.env.PRISM_COMPARE_CONSENT === "1",
+    compareConsent: url => compareConsent({
+      run: webcmd, parseJson: parseJsonOutput,
+      runExperiment: ({ sessionId, choice, run, timeoutMs }) => {
+        console.log(`[CONSENT] Testing ${choice} in a fresh browser profile...`);
+        return runPhase(sessionId, "webcmd/consent-experiment.js", url, timeoutMs, { run, choice });
+      },
+    }),
+    onEvent: options.onEvent,
+  });
 }
 
 async function main() {
@@ -548,7 +517,9 @@ async function main() {
     process.exit(1);
   }
   try {
-    const report = await investigate(targetUrl);
+    const report = await investigate(targetUrl, {
+      onEvent: event => console.log(WORKFLOW_PREFIX + JSON.stringify(event)),
+    });
     console.log("=== FINAL REPORT (pending human review before publishing) ===\n");
     console.log(JSON.stringify(report, null, 2));
   } catch (err) {

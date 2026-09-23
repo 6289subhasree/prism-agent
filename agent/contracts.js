@@ -16,6 +16,7 @@ const workflowEventSchema = z.object({
     "agent.started",
     "agent.completed",
     "agent.failed",
+    "agent.partial",
     "agent.skipped",
   ]),
   at: isoTimestamp,
@@ -48,11 +49,12 @@ const agentResultSchema = z.object({
 const workflowSummarySchema = z.object({
   schemaVersion: z.literal(WORKFLOW_SCHEMA_VERSION),
   investigationId: z.string().uuid(),
-  mode: z.enum(["single-agent-compatibility", "multi-agent"]),
+  mode: z.enum(["single-agent-compatibility", "multi-agent", "staged-workflow"]),
   status: z.enum(["completed", "partial", "failed"]),
   startedAt: isoTimestamp,
   completedAt: isoTimestamp,
   agents: z.array(agentResultSchema),
+  events: z.array(workflowEventSchema).default([]),
 }).strict();
 
 function validateWorkflowEvent(value) {

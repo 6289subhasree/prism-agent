@@ -98,3 +98,19 @@ body[data-capture-scene] .story .scene{display:none}body[data-capture-scene="1"]
 .comparison-difference{padding-top:16px;border-top:1px solid #303534}
 .comparison-difference>p{font-size:18px;line-height:1.6}
 @media(max-width:700px){.report-nav{align-items:flex-start;gap:20px}.report-actions{gap:14px;flex-direction:column;align-items:flex-end}.comparison-run header{flex-wrap:wrap}}
+
+/* The same measured workflow is shown while running and in the saved report. */
+.report-workflow{padding:36px 5vw;border-top:1px solid #303534}
+.workflow-heading{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font:11px 'DM Mono',monospace;letter-spacing:.08em;color:#a6abaa}
+.workflow-progress ol{list-style:none;padding:0;margin:22px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.workflow-progress li{padding:18px;border:1px solid #303534;border-left:3px solid #606665;min-width:0}
+.workflow-progress li>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;font:12px 'DM Mono',monospace}
+.workflow-progress li strong{font-weight:500}
+.workflow-progress li span{text-transform:uppercase;font-size:10px;color:#a6abaa}
+.workflow-progress li p{font-size:13px;line-height:1.6;color:#a6abaa;overflow-wrap:anywhere;margin:12px 0 0}
+.workflow-progress .workflow-running{border-left-color:#69d9ca}
+.workflow-progress .workflow-completed{border-left-color:#88c596}
+.workflow-progress .workflow-failed,.workflow-progress .workflow-partial{border-left-color:#ffb55e}
+.workflow-progress .workflow-skipped,.workflow-progress .workflow-not-run{border-left-style:dashed}
+.live-panel .workflow-progress{margin-top:24px}
+@media(max-width:700px){.workflow-progress ol{grid-template-columns:minmax(0,1fr)}}

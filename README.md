@@ -67,6 +67,21 @@ flowchart TD
 
 The Express bridge validates the requested URL, streams investigation phases to the frontend, and launches the controller without exposing `GEMINI_API_KEY` to the browser.
 
+## Stage progress and partial results
+
+The orchestrator runs four stages in order:
+
+| Stage | Responsibility | If unavailable |
+| --- | --- | --- |
+| Browser evidence | Preflight, observation, consent detection, and the conditional deeper pass | A browser failure stops the investigation; consent-detection or cleanup warnings retain the evidence and mark this stage partial |
+| Deterministic score | Apply the existing rubric to collected evidence | A scoring failure stops the investigation |
+| Gemini explanation | Explain the evidence and completed score | A missing key skips this stage; an API failure keeps the evidence and score |
+| Consent comparison | Run the optional reject/accept experiments in fresh profiles | Disabled runs are skipped; incomplete experiments keep their available results |
+
+The UI shows each stage as pending, running, completed, partial, failed, or skipped. Stages after a required failure are shown as not run. Completed stages include elapsed time. The same event sequence and stage results are saved in the downloaded JSON under `workflow`.
+
+Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second comparison budget and independent cleanup timeouts.
+
 ## Evidence-first scoring
 
 Gemini never chooses, modifies, or overrides the score. The deterministic rubric considers:
