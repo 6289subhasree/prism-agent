@@ -14,7 +14,7 @@ page.on('request', req => {
 });
 await page.waitForTimeout(3000);
 // Select only one explicit choice inside a visible cookie/consent container.
-const selected = await page.evaluate((action) => {
+const selectControl = (action) => {
   const visible = el => {
     const s = getComputedStyle(el), r = el.getBoundingClientRect();
     return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) !== 0 && r.width > 0 && r.height > 0 && !el.closest('[hidden], [aria-hidden="true"]');
@@ -26,12 +26,21 @@ const selected = await page.evaluate((action) => {
     const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().replace(/\s+/g, ' ');
     return visible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && pattern.test(label);
   });
-  if (matches.length !== 1) return { status: 'skipped', reason: matches.length ? 'Multiple matching controls; no click performed' : 'No unambiguous visible control; no click performed' };
+  if (matches.length !== 1) return { status: 'skipped', matchCount: matches.length, reason: matches.length ? 'Multiple matching controls; no click performed' : 'No unambiguous visible control; no click performed' };
   const el = matches[0];
   const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
   el.setAttribute('data-prism-consent-target', action);
   return { status: 'ready', label };
-}, choice);
+};
+// Consent scripts can render after the initial observation window. Reinspect
+// missing controls twice, within the existing experiment timeout. Never retry
+// an ambiguous match or a click, and never reload the fresh profile's page.
+let selected;
+for (let attempt = 0; attempt < 3; attempt++) {
+  selected = await page.evaluate(selectControl, choice);
+  if (selected.status !== 'skipped' || selected.matchCount !== 0 || attempt === 2) break;
+  await page.waitForTimeout(1000);
+}
 if (selected.status === 'skipped') return selected;
 collectingAfter = true;
 await page.locator(`[data-prism-consent-target="${choice}"]`).click({ timeout: 5000 });

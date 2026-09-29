@@ -82,6 +82,8 @@ The UI shows each stage as pending, running, completed, partial, failed, or skip
 
 Partial stages show their recorded reasons, including consent inspection errors, skipped comparison choices, and session cleanup warnings. A skipped choice is not evidence that the website lacks that choice.
 
+For a delayed consent banner, comparison checks for the requested control twice more at one-second intervals after its initial check. It clicks only a single unambiguous match; multiple matches are skipped immediately. These checks stay within the existing experiment timeout.
+
 Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second comparison budget and independent cleanup timeouts.
 
 ## Evidence-first scoring

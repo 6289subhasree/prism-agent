@@ -76,3 +76,50 @@ test('browser experiment keeps pre-click and post-click traffic separate', async
   assert.equal(result.afterDomains[0], 'after.test');
   assert.equal(result.controlDismissed, true);
 });
+
+async function delayedControlFixture(matches) {
+  const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+  const waits = [];
+  let clicks = 0, inspections = 0;
+  const page = {
+    goto: async () => {}, url: async () => 'https://example.com', on() {},
+    waitForTimeout: async ms => { waits.push(ms); },
+    evaluate: async () => {
+      if (clicks) return true; // Post-click dismissal check.
+      const count = matches[Math.min(inspections++, matches.length - 1)];
+      return count === 1 ? { status: 'ready', label: 'Deny' }
+        : { status: 'skipped', matchCount: count, reason: count ? 'Multiple matching controls; no click performed' : 'No unambiguous visible control; no click performed' };
+    },
+    locator: () => ({ click: async () => { clicks++; } }),
+  };
+  const source = fs.readFileSync(path.join(__dirname, '../webcmd/consent-experiment.js'), 'utf8');
+  const result = await vm.runInNewContext('(async () => {' + source + '})()', { page });
+  return { result, clicks, inspections, waits };
+}
+
+test('a delayed consent control is detected and clicked once after bounded reinspection', async () => {
+  const f = await delayedControlFixture([0, 0, 1]);
+  assert.equal(f.result.status, 'observed');
+  assert.equal(f.clicks, 1);
+  assert.equal(f.inspections, 3);
+  assert.deepEqual(f.waits, [3000, 1000, 1000, 3000]);
+  assert.equal(f.result.observationMs, 3000);
+});
+
+test('a missing consent control stops after two extra checks without clicking', async () => {
+  const f = await delayedControlFixture([0]);
+  assert.equal(f.result.status, 'skipped');
+  assert.equal(f.clicks, 0);
+  assert.equal(f.inspections, 3);
+  assert.deepEqual(f.waits, [3000, 1000, 1000]);
+});
+
+test('ambiguous controls stop inspection immediately even after an initially missing banner', async () => {
+  for (const matches of [[2], [0, 2]]) {
+    const f = await delayedControlFixture(matches);
+    assert.equal(f.result.status, 'skipped');
+    assert.equal(f.clicks, 0);
+    assert.equal(f.inspections, matches.length);
+    assert.match(f.result.reason, /Multiple/);
+  }
+});
