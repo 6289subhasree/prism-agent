@@ -223,6 +223,8 @@ Do not terminate unrelated Node processes such as an active Codex session.
 
 Confirm that the root `.env` contains `GEMINI_API_KEY`, restart `npm run dev`, and investigate again. The deterministic report remains valid without Gemini.
 
+An HTTP 503 means the provider could not serve the request. PRISM retries it once when time permits, honoring `Retry-After`. Both attempts, the wait, and response reading share the existing 25-second explanation limit and remaining investigation budget. If the provider stays unavailable, the report keeps its evidence and score and shows the API error in the explanation stage.
+
 ## Repository structure
 
 ```text

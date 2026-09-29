@@ -21,6 +21,7 @@ const { compareConsent } = require("./consent-comparison");
 const { WORKFLOW_PREFIX } = require("./progress");
 const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
+const { requestGeminiJson } = require("./gemini-request");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
@@ -326,19 +327,9 @@ Return ONLY JSON (no markdown, no prose) with this shape:
 }
 `.trim();
 
-  // Unlike execFileSync above, fetch() is genuinely async, so a plain
-  // timer can actually preempt it — but it still needs to respect
-  // whatever's left of the shared investigation deadline, not a fresh
-  // timeout of its own.
+  // The request and its single overload retry share the remaining time budget.
   if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    Math.max(1, Math.min(remainingMs, GEMINI_TIMEOUT_MS))
-  );
-  let res;
-  try {
-    res = await fetch(
+  const data = await requestGeminiJson(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=` +
         process.env.GEMINI_API_KEY,
       {
@@ -372,21 +363,9 @@ Return ONLY JSON (no markdown, no prose) with this shape:
             },
           },
         }),
-        signal: controller.signal,
-      }
-    );
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error(`Gemini explanation timed out after ${Math.min(remainingMs, GEMINI_TIMEOUT_MS) / 1000}s`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`Gemini API returned HTTP ${res.status}: ${data.error?.message || "request failed"}`);
-  }
+      },
+      { budgetMs: Math.min(remainingMs, GEMINI_TIMEOUT_MS) },
+  );
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("No response from Gemini: " + JSON.stringify(data));
   return JSON.parse(text);

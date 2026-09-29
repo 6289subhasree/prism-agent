@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const { scoreEvidence } = require('../evidence/scorer');
 
-function controllerFixture(deep) {
+function controllerFixture(deep, requestGeminiJson) {
   const calls = [];
   const network = domains => ({ totalRequests: 4, firstPartyRequests: 2, thirdPartyRequests: 2, domains, uniqueThirdPartyDomains: domains.length, sampleThirdPartyRequests: [] });
   const initial = { network: network(deep ? ['a.test', 'b.test'] : []), forms: { count: 0, sensitiveFieldCount: 0, items: [] } };
@@ -27,11 +27,12 @@ function controllerFixture(deep) {
   };
   const filename = path.join(__dirname, 'controller.js');
   const realRequire = createRequire(filename);
-  const load = Object.assign(name => name === 'child_process' ? { execFileSync: execute } : realRequire(name), { resolve: realRequire.resolve });
+  const load = Object.assign(name => name === 'child_process' ? { execFileSync: execute }
+    : name === './gemini-request' && requestGeminiJson ? { requestGeminiJson } : realRequire(name), { resolve: realRequire.resolve });
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
     require: load, module, __dirname, URL, console: { log() {}, error() {} },
-    process: { env: {}, execPath: process.execPath, platform: process.platform },
+    process: { env: requestGeminiJson ? { GEMINI_API_KEY: 'test-key' } : {}, execPath: process.execPath, platform: process.platform },
   });
   return { investigate: module.exports.investigate, calls };
 }
@@ -51,4 +52,24 @@ test('controller adapters retain initial/deeper evidence, session cleanup, and d
     assert.equal(report.workflow.agents[3].status, 'skipped');
     assert.equal(events.at(-1).type, 'workflow.completed');
   }
+});
+
+test('controller sends the constrained explanation through the bounded request helper', async () => {
+  let requests = 0;
+  const explanation = { reasoning: 'Observed evidence', evidenceBullets: [], dataCollectionFindings: [], findings: [] };
+  const f = controllerFixture(false, async (url, init, options) => {
+    requests++;
+    assert.match(url, /:generateContent\?key=test-key$/);
+    assert.equal(init.method, 'POST');
+    const body = JSON.parse(init.body);
+    assert.match(body.contents[0].parts[0].text, /Deterministic scoring/);
+    assert.equal(body.generationConfig.responseMimeType, 'application/json');
+    assert.deepEqual(body.generationConfig.responseSchema.required, ['evidenceBullets', 'reasoning', 'dataCollectionFindings', 'findings']);
+    assert(options.budgetMs > 0 && options.budgetMs <= 25000);
+    return { candidates: [{ content: { parts: [{ text: JSON.stringify(explanation) }] } }] };
+  });
+  const report = await f.investigate('https://example.com');
+  assert.equal(requests, 1);
+  assert.equal(report.workflow.agents[2].status, 'completed');
+  assert.deepEqual(JSON.parse(JSON.stringify(report.explanation)), explanation);
 });
