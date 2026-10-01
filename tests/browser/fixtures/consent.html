@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>PRISM consent regression fixture</title>
+<script src="https://cdn.example.com/site.js"></script>
+<script src="https://analytics.example.net/initial.js"></script>
+</head>
+<body>
+<h1>Controlled consent test page</h1>
+<form action="https://forms.example.com/subscribe"><input type="email" name="email"></form>
+<form action="javascript:void(0)"><input name="query"></form>
+<script>
+  const scenario = new URL(location.href).searchParams.get('scenario') || 'visible';
+  window.fixtureClicks = [];
+  function showBanner() {
+    if (scenario === 'absent') return;
+    const banner = document.createElement('section');
+    banner.id = 'cookie-banner';
+    banner.setAttribute('role', 'dialog');
+    banner.innerHTML = '<h2>Cookie consent</h2><div class="consent-actions"><button data-choice="reject">Deny</button><button data-choice="accept">Allow all</button></div>';
+    if (scenario === 'hidden') banner.insertAdjacentHTML('beforeend', '<button hidden>Deny</button><button style="display:none">Allow all</button><button disabled>Deny</button>');
+    if (scenario === 'ambiguous') banner.insertAdjacentHTML('beforeend', '<button data-choice="reject">Deny</button>');
+    banner.addEventListener('click', event => {
+      const choice = event.target.dataset.choice;
+      if (!choice) return;
+      window.fixtureClicks.push(choice);
+      fetch('https://consent.example.com/choice', { mode: 'no-cors' });
+      if (choice === 'accept') fetch('https://analytics.example.net/accepted', { mode: 'no-cors' });
+      if (scenario !== 'persistent') banner.remove();
+    });
+    document.body.append(banner);
+  }
+  if (scenario === 'delayed') setTimeout(showBanner, 3500);
+  else showBanner();
+</script>
+</body>
+</html>

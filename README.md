@@ -179,6 +179,15 @@ npm test
 npm run build
 ```
 
+For deterministic browser regression tests, install the test browser once:
+
+```powershell
+npm run test:browser:install
+npm run test:browser
+```
+
+These tests use Chromium with local response fixtures: all page requests are intercepted, so they need no public test website or Gemini key. They exercise the production browser scripts against redirects, same-site resources, delayed/hidden/ambiguous consent controls, and undismissed banners. Each scenario uses a fresh browser context. The Webcmd daemon itself is outside this suite; use `npm run prism:doctor` and a live investigation to verify that integration on your machine. Browser tests fail with setup instructions if Chromium is missing; they do not silently skip.
+
 The controller can also run without the frontend:
 
 ```powershell

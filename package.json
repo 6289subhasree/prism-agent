@@ -9,6 +9,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "prism:doctor": "node scripts/prism-doctor.js",
     "test": "node --test agent/*.test.js",
+    "test:browser": "node --test tests/browser/*.test.js",
+    "test:browser:install": "playwright-core install chromium --only-shell",
     "test:api": "node scripts/test-api.js"
   },
   "dependencies": {
@@ -21,5 +23,8 @@
     "tldts": "7.4.11",
     "vite": "latest",
     "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "playwright-core": "1.61.1"
   }
 }
