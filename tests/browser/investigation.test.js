@@ -6,6 +6,7 @@ const { chromium } = require('playwright-core');
 const { classifyEvidence, classifyConsentResult } = require('../../evidence/domain-classifier');
 const { compareConsent } = require('../../agent/consent-comparison');
 const { analyzeConsent } = require('../../agent/consent');
+const { startRedirectServer } = require('./redirect-server');
 const root = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(__dirname, 'fixtures/consent.html'), 'utf8');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -26,7 +27,6 @@ async function withFixture(scenario, callback) {
   const target = `https://www.example.com/fixtures?scenario=${scenario}`;
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
-    if (url.hostname === 'redirect.example.org') return route.fulfill({ status: 302, headers: { location: target } });
     if (url.hostname === 'www.example.com') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
     return route.fulfill({ status: 200, contentType: 'application/javascript', body: '', headers: { 'access-control-allow-origin': '*' } });
   });
@@ -41,16 +41,41 @@ async function execute(script, page, url, choice = '') {
   return new AsyncFunction('page', source)(page);
 }
 
-test('real browser collection excludes same-site scripts and form actions after a redirect', { timeout: 20000 }, async () => {
-  await withFixture('visible', async page => {
-    const result = classifyEvidence(await execute('explore.js', page, 'https://redirect.example.org/start'));
+test('real browser collection excludes same-site scripts and form actions', { timeout: 20000 }, async () => {
+  await withFixture('visible', async (page, target) => {
+    const result = classifyEvidence(await execute('explore.js', page, target));
+    assert.equal(await page.title(), 'PRISM consent regression fixture', 'The test must load its controlled fixture');
     assert.equal(result.network.classification.referenceDomain, 'example.com');
-    assert(result.network.requestsByHostname.some(host => host.hostname === 'cdn.example.com' && !host.thirdParty));
+    assert(result.network.requestsByHostname.some(host => host.hostname === 'cdn.example.com' && !host.thirdParty), JSON.stringify(result.network.requestsByHostname));
     assert(result.network.domains.includes('analytics.example.net'));
     assert.equal(result.forms.externalActionCount, 0);
     assert.deepEqual(result.scripts.domains, ['analytics.example.net']);
     assert.equal(result.forms.items[1].actionKind, 'script-handler');
   });
+});
+
+test('real HTTP redirects use the final page identity without visiting a public site', { timeout: 20000 }, async () => {
+  const server = await startRedirectServer();
+  let context;
+  try {
+    context = await browser.newContext({ serviceWorkers: 'block' });
+    await context.route('**/*', route => {
+      const url = new URL(route.request().url());
+      return ['localhost', '127.0.0.1'].includes(url.hostname) && url.port === String(server.port)
+        ? route.continue() : route.abort();
+    });
+    const page = await context.newPage();
+    const result = classifyEvidence(await execute('explore.js', page, server.startUrl));
+    assert.equal(await page.title(), 'PRISM local redirect fixture');
+    assert.equal(await page.evaluate(() => window.redirectFixtureLoaded), true);
+    assert.equal(result.finalUrl, server.finalUrl);
+    assert.equal(result.network.classification.referenceUrl, server.finalUrl);
+    assert.equal(result.network.classification.referenceHostname, '127.0.0.1');
+    assert(result.network.requestsByHostname.some(host => host.hostname === '127.0.0.1' && !host.thirdParty));
+    assert(result.network.domains.includes('localhost'), 'The original navigation host differs from the final page');
+  } finally {
+    try { await context?.close(); } finally { await server.close(); }
+  }
 });
 
 test('real DOM consent inspection excludes hidden and disabled controls and deduplicates nested containers', async () => {
