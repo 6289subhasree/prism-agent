@@ -47,7 +47,10 @@ flowchart TD
     D --> E
     E --> F["Deterministic score"]
     F --> G["Gemini explanation"]
-    G --> H["Human-review report"]
+    G --> I["Optional consent comparison"]
+    I --> J["Network and consent specialists"]
+    J --> K["Verify structured findings"]
+    K --> H["Human-review report"]
 ```
 
 The conditional branch is based on explicit evidence such as an external form destination, a third-party domain count near a scoring boundary, or sensitive fields appearing alongside third-party activity.
@@ -62,14 +65,18 @@ flowchart TD
     WC --> EVID["Structured evidence"]
     EVID --> SCORE["Deterministic scorer"]
     SCORE --> EXPLAIN["Optional Gemini explanation"]
-    EXPLAIN --> REPORT["Human-review report"]
+    EXPLAIN --> CONSENT["Optional consent experiments"]
+    CONSENT --> SPECIALISTS["Rule-based specialists"]
+    EVID --> SPECIALISTS
+    SPECIALISTS --> VERIFY["Evidence-reference verifier"]
+    VERIFY --> REPORT["Human-review report"]
 ```
 
 The Express bridge validates the requested URL, streams investigation phases to the frontend, and launches the controller without exposing `GEMINI_API_KEY` to the browser.
 
 ## Stage progress and partial results
 
-The orchestrator runs four stages in order:
+The orchestrator runs seven stages in order:
 
 | Stage | Responsibility | If unavailable |
 | --- | --- | --- |
@@ -77,14 +84,25 @@ The orchestrator runs four stages in order:
 | Deterministic score | Apply the existing rubric to collected evidence | A scoring failure stops the investigation |
 | Gemini explanation | Explain the evidence and completed score | A missing key skips this stage; an API failure keeps the evidence and score |
 | Consent comparison | Run the optional reject/accept experiments in fresh profiles | Disabled runs are skipped; incomplete experiments keep their available results |
+| Network specialist | Propose a cited summary of third-party request counts | Missing counts produce a warning, not a zero-count claim |
+| Consent specialist | Summarize inferred control labels and completed experiment differences | Missing observations produce no unsupported finding |
+| Finding verification | Check structured claims against their referenced evidence | Inconsistent claims are withheld; the original evidence and score remain available |
 
-The UI shows each stage as pending, running, completed, partial, failed, or skipped. Stages after a required failure are shown as not run. Completed stages include elapsed time. The same event sequence and stage results are saved in the downloaded JSON under `workflow`.
+The UI shows stage status as pending, running, completed, partial, failed, or skipped. Specialist rows appear when their events arrive, so older reports retain their original timeline. Stages after a required failure are shown as not run. Completed stages include elapsed time. The same event sequence and stage results are saved in the downloaded JSON under `workflow`.
 
 Partial stages show their recorded reasons, including consent inspection errors, skipped comparison choices, and session cleanup warnings. A skipped choice is not evidence that the website lacks that choice.
 
 For a delayed consent banner, comparison checks for the requested control twice more at one-second intervals after its initial check. It clicks only a single unambiguous match; multiple matches are skipped immediately. These checks stay within the existing experiment timeout.
 
 Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second comparison budget and independent cleanup timeouts.
+
+## Findings with evidence
+
+The report now includes a **Findings with evidence** section. Expand a finding to inspect its supporting JSON values; the references and results are also exported under `specialistFindings`.
+
+The network specialist summarizes captured request counts. The consent specialist reports label-based interpretations and, when both experiments completed, the accept-minus-reject request difference. The verifier recomputes network totals from per-hostname rows and consent differences from the two observations. It checks the expected evidence references, claim type, and observed/inferred label before producing the displayed text. Failed checks appear under **findings withheld**.
+
+These specialists use explicit rules and add no model calls or browser actions. “Evidence-consistent” means the structured claim matches the captured report data. It does not verify capture completeness, Gemini prose, or legal compliance. Specialists do not change the deterministic score.
 
 ## Evidence-first scoring
 

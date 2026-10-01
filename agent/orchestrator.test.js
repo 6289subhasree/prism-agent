@@ -9,7 +9,7 @@ function fixture(overrides = {}) {
   const events = [], calls = [];
   const baseline = {
     investigatedUrl: "https://example.com", humanApprovalRequired: true,
-    evidence: { network: { domains: ["analytics.example.net"] }, forms: { items: [] } },
+    evidence: { network: { domains: ["analytics.example.net"], totalRequests: 2, thirdPartyRequests: 1, uniqueThirdPartyDomains: 1, requestsByHostname: [{ hostname: "example.com", count: 1, thirdParty: false }, { hostname: "analytics.example.net", count: 1, thirdParty: true }] }, forms: { items: [] } },
     agentLoop: { plannerDecision: { needed: false, reason: "Sufficient evidence" }, investigationPhases: [{ phase: "initial", actions: ["navigate"] }], phase2Ran: false },
     consent: { status: "not-observed", controls: [] }, runtimeWarnings: [],
   };
@@ -39,8 +39,8 @@ test("stages pass evidence and deterministic score in order and preserve report 
   assert.deepEqual(report.scoring, scoreEvidence(f.baseline.evidence));
   assert.equal(report.workflow.mode, "staged-workflow");
   assert.equal(report.workflow.status, "completed");
-  assert.equal(report.workflow.agents.length, 4);
-  assert.deepEqual(report.workflow.agents.map(a => a.status), Array(4).fill("completed"));
+  assert.equal(report.workflow.agents.length, 7);
+  assert.deepEqual(report.workflow.agents.map(a => a.status), Array(7).fill("completed"));
   assert.deepEqual(report.workflow.events, f.events);
   assert.deepEqual(f.events.map(e => e.sequence), f.events.map((_, i) => i));
   assert(f.events.every(e => e.investigationId === report.workflow.investigationId));
@@ -62,7 +62,7 @@ test("disabled optional stages are skipped and never invoked", async () => {
   const report = await run(f);
   assert.deepEqual(f.calls, ["browser", "score"]);
   assert.equal(report.workflow.status, "completed");
-  assert.deepEqual(report.workflow.agents.map(a => a.status), ["completed", "completed", "skipped", "skipped"]);
+  assert.deepEqual(report.workflow.agents.map(a => a.status), ["completed", "completed", "skipped", "skipped", "completed", "completed", "completed"]);
   assert.equal(report.consentComparison.status, "disabled");
 });
 
@@ -167,4 +167,32 @@ test("UI distinguishes skipped and failed stages and stops pending rows after re
   const failedRows = workflowRows(failed.events);
   assert.equal(failedRows[0].status, "failed");
   assert.deepEqual(failedRows.slice(1).map(r => r.status), Array(3).fill("not-run"));
+});
+
+
+test("specialist failure retains evidence and score and still runs verification", async () => {
+  const report = await run(fixture({ analyzeNetwork: () => { throw new Error("Network analyzer failed"); } }));
+  assert.equal(report.workflow.status, "partial");
+  assert.equal(report.workflow.agents[4].status, "failed");
+  assert.equal(report.workflow.agents[6].status, "completed");
+  assert.deepEqual(report.specialistFindings.warnings, ["Network analyzer failed"]);
+  assert.deepEqual(report.scoring, scoreEvidence(report.evidence));
+});
+
+test("unsupported specialist claims are withheld and verification is marked partial", async () => {
+  const report = await run(fixture({ analyzeNetwork: () => ({ findings: [{ id: "invented", claim: "site-is-safe" }], warnings: [] }) }));
+  assert.equal(report.workflow.agents[6].status, "partial");
+  assert.equal(report.specialistFindings.findings.length, 0);
+  assert.equal(report.specialistFindings.rejected.length, 1);
+  assert.equal(report.workflow.status, "partial");
+});
+
+test("new reports include verified findings and specialist progress; old timelines keep four rows", async () => {
+  const report = await run(fixture());
+  assert.equal(report.specialistFindings.findings[0].values.thirdPartyRequests, 1);
+  const { workflowRows } = await import("../src/workflow.mjs");
+  assert.equal(workflowRows(report.workflow.events).length, 7);
+  assert.equal(workflowRows(report.workflow.events).at(-1).status, "completed");
+  const oldEvents = report.workflow.events.filter(e => !["network-specialist", "consent-specialist", "finding-verifier"].includes(e.agentId));
+  assert.equal(workflowRows(oldEvents).length, 4);
 });

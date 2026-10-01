@@ -114,3 +114,17 @@ body[data-capture-scene] .story .scene{display:none}body[data-capture-scene="1"]
 .workflow-progress .workflow-skipped,.workflow-progress .workflow-not-run{border-left-style:dashed}
 .live-panel .workflow-progress{margin-top:24px}
 @media(max-width:700px){.workflow-progress ol{grid-template-columns:minmax(0,1fr)}}
+
+.specialist-findings { padding: 64px clamp(24px, 5vw, 90px); border-top: 1px solid #303534; }
+.specialist-findings h3 { margin: 20px 0; font-size: clamp(28px, 4vw, 48px); letter-spacing: -0.035em; }
+.specialist-scope { max-width: 760px; color: #a6abaa; line-height: 1.6; }
+.specialist-finding { border-top: 1px solid #303534; padding: 24px 0; }
+.specialist-finding header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.specialist-finding header span { font-size: 13px; color: #a6abaa; }
+.specialist-finding p { max-width: 900px; line-height: 1.6; }
+.specialist-findings summary { cursor: pointer; color: #69d9ca; padding: 8px 0; }
+.finding-evidence { margin-top: 16px; min-width: 0; }
+.finding-evidence > code { overflow-wrap: anywhere; }
+.finding-evidence pre { max-height: 300px; overflow: auto; padding: 16px; background: #111716; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.specialist-warning, .specialist-withheld { color: #ffb85b; }
+.specialist-withheld li { overflow-wrap: anywhere; margin: 12px 0; }

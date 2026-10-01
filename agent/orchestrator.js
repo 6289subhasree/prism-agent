@@ -1,4 +1,5 @@
 const { randomUUID } = require("node:crypto");
+const { analyzeNetwork, analyzeConsent, verifyFindings } = require("./specialists");
 const {
   WORKFLOW_SCHEMA_VERSION, AGENT_RESULT_SCHEMA_VERSION,
   validateAgentResult, validateWorkflowEvent, validateWorkflowSummary,
@@ -101,13 +102,32 @@ async function orchestrateInvestigation(targetUrl, options) {
       warnings: comparisonWarnings,
       fallback: error => error ? { status: "partial", runs: [], comparison: null, error: error.message } : { status: "disabled", runs: [] },
     });
+    const reportEvidence = { ...baseline, consentComparison };
+    const specialistConfig = refs => ({
+      optional: true, refs,
+      outcome: value => value.warnings.length ? "partial" : "completed",
+      warnings: value => value.warnings,
+      fallback: error => ({ findings: [], warnings: [error.message] }),
+    });
+    const networkFindings = await stage("network-specialist", "Analyzing network evidence", () =>
+      (options.analyzeNetwork || analyzeNetwork)(reportEvidence), specialistConfig(["report.evidence.network"]));
+    const consentFindings = await stage("consent-specialist", "Analyzing consent evidence", () =>
+      (options.analyzeConsent || analyzeConsent)(reportEvidence), specialistConfig(["report.consent", "report.consentComparison"]));
+    const specialistFindings = await stage("finding-verifier", "Checking specialist claims against evidence", () =>
+      verifyFindings(reportEvidence, [...networkFindings.findings, ...consentFindings.findings]), {
+        optional: true, refs: ["report.specialistFindings"],
+        outcome: value => value.status,
+        warnings: value => value.rejected.map(finding => `${finding.id}: ${finding.reason}`),
+        fallback: error => ({ schemaVersion: "prism.findings.v1", status: "unavailable", findings: [], rejected: [], error: error.message }),
+      });
+    specialistFindings.warnings = [...networkFindings.warnings, ...consentFindings.warnings];
     const status = agents.some(agent => ["partial", "failed"].includes(agent.status)) ? "partial" : "completed";
     emit({ type: "workflow.completed", detail: status === "partial" ? "Report ready with some unavailable results" : "Report ready" });
     const workflow = validateWorkflowSummary({
       schemaVersion: WORKFLOW_SCHEMA_VERSION, investigationId, mode: "staged-workflow", status,
       startedAt, completedAt: now().toISOString(), agents, events,
     });
-    return { ...baseline, generatedAt: now().toISOString(), scoring, explanation, consentComparison, workflow };
+    return { ...baseline, generatedAt: now().toISOString(), scoring, explanation, consentComparison, specialistFindings, workflow };
   } catch (error) {
     emit({ type: "workflow.failed", error: normalizeError(error) });
     throw error;

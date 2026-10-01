@@ -4,9 +4,17 @@ export const WORKFLOW_STAGES = [
   { id: "explanation", label: "Gemini explanation" },
   { id: "consent-comparison", label: "Consent comparison" },
 ];
+const SPECIALIST_STAGES = [
+  { id: "network-specialist", label: "Network specialist" },
+  { id: "consent-specialist", label: "Consent specialist" },
+  { id: "finding-verifier", label: "Finding verification" },
+];
 
 export function workflowRows(events = []) {
-  const rows = WORKFLOW_STAGES.map(stage => ({ ...stage, status: "pending", detail: "Waiting" }));
+  // Older saved reports retain their original four stages. Specialist rows
+  // appear as their events arrive, without inventing pending work for old runs.
+  const stages = [...WORKFLOW_STAGES, ...SPECIALIST_STAGES.filter(stage => events.some(event => event.agentId === stage.id))];
+  const rows = stages.map(stage => ({ ...stage, status: "pending", detail: "Waiting" }));
   const states = { started: "running", completed: "completed", partial: "partial", failed: "failed", skipped: "skipped" };
   const ordered = [...events].sort((a, b) => a.sequence - b.sequence);
   for (const event of ordered) {

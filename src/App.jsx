@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConsentComparison, downloadReport } from "./ReportTools.jsx";
+import { SpecialistFindings } from "./SpecialistFindings.jsx";
 import { WorkflowProgress } from "./WorkflowProgress.jsx";
 import prismHero from "./assets/prism-hero.jpg";
 
@@ -122,6 +123,7 @@ function Report({ report, onReset }) {
       <div className="domain-list">{report.consent.status === "unavailable" && <p role="status">Reason: {report.consent.error || "No error detail was returned."}</p>}{report.consent.controls?.map((control, i) => <div key={i}><span>{control.label}</span><em>{control.inferredAction.toUpperCase()} · INFERRED</em></div>)}</div>
     </section>}
     <ConsentComparison result={report.consentComparison} />
+    <SpecialistFindings report={report} />
     <section className="loop-result"><div className="eyebrow">AGENT DECISION</div><h3>OBSERVE → DECIDE → {agentLoop.phase2Ran ? "ACT → OBSERVE → " : "SUFFICIENT → "}SCORE</h3><p>{agentLoop.plannerDecision.reason}</p>{agentLoop.phase2Ran && <span>DEEP INVESTIGATION PERFORMED IN THE SAME SESSION</span>}</section>
     <section className={`explanation ${explanation.status === "unavailable" ? "explanation-unavailable" : ""}`}><div className="eyebrow">GEMINI / EXPLANATION LAYER</div>{explanation.status === "unavailable" ? <><h3>AI explanation unavailable.</h3><p>The deterministic investigation and score remain valid.</p><small className="explanation-status">Evidence analysis completed successfully.</small></> : <><h3>THE EVIDENCE,<br/>IN PLAIN LANGUAGE.</h3><p>{explanation.reasoning}</p><ul>{explanation.evidenceBullets?.map(x => <li key={x}>{x}</li>)}</ul></>}</section>
     {report.humanApprovalRequired && <footer className="review"><span><i/> PENDING HUMAN REVIEW</span><p>Evidence has been collected and scored. Review findings before publishing or taking consequential action.</p></footer>}
