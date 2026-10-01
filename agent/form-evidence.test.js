@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { classifyEvidence } = require("../evidence/domain-classifier");
 const { scoreEvidence } = require("../evidence/scorer");
 
 // Execute the real collector, including its page.evaluate callbacks, against
@@ -16,11 +17,11 @@ async function collect(forms, pageUrl = "https://www.example.com/redirected/page
     })) : [],
   };
   const page = {
-    on() {}, async goto() {}, async waitForTimeout() {},
+    url: () => pageUrl, on() {}, async goto() {}, async waitForTimeout() {},
     evaluate: (fn, argument) => vm.runInNewContext(`(${fn.toString()})(argument)`, { document, URL, argument }),
   };
   const source = fs.readFileSync(path.join(__dirname, "../webcmd/explore.js"), "utf8");
-  return vm.runInNewContext(`(async () => { ${source} })()`, { page });
+  return classifyEvidence(await vm.runInNewContext(`(async () => { ${source} })()`, { page }));
 }
 
 test("script handlers preserve email evidence without adding external-form points", async () => {

@@ -71,9 +71,9 @@ test('browser experiment keeps pre-click and post-click traffic separate', async
   };
   const source = fs.readFileSync(path.join(__dirname, '../webcmd/consent-experiment.js'), 'utf8');
   const result = await vm.runInNewContext('(async () => {' + source + '})()', { page });
-  assert.equal(result.afterRequests, 1);
-  assert.equal(result.beforeDomains[0], 'before.test');
-  assert.equal(result.afterDomains[0], 'after.test');
+  assert.equal(result.afterRequestsByHostname[0].count, 1);
+  assert.equal(result.beforeRequestsByHostname[0].hostname, 'before.test');
+  assert.equal(result.afterRequestsByHostname[0].hostname, 'after.test');
   assert.equal(result.controlDismissed, true);
 });
 

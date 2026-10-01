@@ -38,7 +38,7 @@ function scoreExternalForms(forms) {
   if (externalForms.length > 0) {
     return {
       points: 20,
-      reason: `${externalForms.length} form(s) have an HTTP(S) action on an external hostname; submission not tested`,
+      reason: `${externalForms.length} form(s) have an HTTP(S) action on an external site; submission not tested`,
       externalForms,
     };
   }

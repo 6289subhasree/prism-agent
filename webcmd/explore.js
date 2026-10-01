@@ -9,7 +9,6 @@ function domainOf(u) {
   return match ? match[1].replace(/^\[|\]$/g, "").toLowerCase() : null;
 }
 
-const mainDomain = domainOf(url);
 
 page.on("request", (req) => {
   const reqUrl = req.url();
@@ -21,7 +20,6 @@ page.on("request", (req) => {
     domain,
     resourceType: req.resourceType(),
     method: req.method(),
-    thirdParty: domain !== mainDomain,
   });
 });
 
@@ -31,6 +29,8 @@ await page.goto(url, {
 });
 
 await page.waitForTimeout(3000);
+const finalUrl = await page.url();
+const mainDomain = domainOf(finalUrl);
 
 const resolvedForms = await page.evaluate(() => {
   const pageDomain = new URL(document.URL).hostname.toLowerCase();
@@ -79,48 +79,15 @@ const sensitiveFieldCount = resolvedForms.reduce(
   0
 );
 
-const externalScriptSrcs = await page.evaluate(
-  (main) => {
-    return Array.from(
-      document.querySelectorAll("script[src]")
-    )
-      .map((s) => s.src)
-      .filter((src) => {
-        try {
-          return new URL(src).hostname !== main;
-        } catch {
-          return false;
-        }
-      });
-  },
-  mainDomain
-);
-
-const externalScriptDomains = [
-  ...new Set(
-    externalScriptSrcs
-      .map((src) => domainOf(src))
-      .filter(Boolean)
-  ),
-];
-
-const thirdPartyRequests = requests.filter(
-  (r) => r.thirdParty
-);
-
-const firstPartyRequests = requests.filter(
-  (r) => !r.thirdParty
-);
-
-const thirdPartyDomains = [
-  ...new Set(
-    thirdPartyRequests.map((r) => r.domain)
-  ),
-];
+// Classify on the controller using the Public Suffix List, after redirects.
+const scriptSources = await page.evaluate(() => Array.from(document.querySelectorAll("script[src]")).map(script => script.src));
+const counts = new Map();
+for (const request of requests) counts.set(request.domain, (counts.get(request.domain) || 0) + 1);
 
 return {
   phase: "explore",
   investigatedUrl: url,
+  finalUrl,
   mainDomain,
 
   actions: [
@@ -130,16 +97,8 @@ return {
   ],
 
   network: {
-    totalRequests: requests.length,
-    firstPartyRequests:
-      firstPartyRequests.length,
-    thirdPartyRequests:
-      thirdPartyRequests.length,
-    uniqueThirdPartyDomains:
-      thirdPartyDomains.length,
-    domains: thirdPartyDomains,
-    sampleThirdPartyRequests:
-      thirdPartyRequests.slice(0, 40),
+    requestsByHostname: [...counts].map(([hostname, count]) => ({ hostname, count })),
+    requestSamples: requests.slice(0, 200),
   },
 
   forms: {
@@ -152,11 +111,5 @@ return {
     items: resolvedForms,
   },
 
-  scripts: {
-    externalCount:
-      externalScriptSrcs.length,
-    uniqueExternalDomains:
-      externalScriptDomains.length,
-    domains: externalScriptDomains,
-  },
+  scripts: { sources: scriptSources },
 };

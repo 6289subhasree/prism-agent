@@ -88,6 +88,10 @@ Workflow mode is `staged-workflow`: these are separately invoked stages with def
 
 ## Evidence-first scoring
 
+Network requests, HTTP(S) form actions, scripts, and consent experiments use a registrable-domain comparison against the page's final URL after navigation. For example, `consent.cookiebot.com` and `www.cookiebot.com` belong to the same site. The pinned `tldts` Public Suffix List includes private suffixes, so `alice.github.io` and `bob.github.io` remain separate sites. IP addresses and unrecognized suffixes use exact hostname matching. Protocol and port differences do not make a request third-party under this rule.
+
+The JSON report records the classification method and per-host request counts, including same-site traffic. Unique third-party counts still count distinct hostnames, not companies. Same-site does not mean safe: CNAME cloaking, ownership, and the contents of transmitted data are not determined by this classification. Counts and scores from older hostname-based reports are not directly comparable with new runs.
+
 Gemini never chooses, modifies, or overrides the score. The deterministic rubric considers:
 
 | Component | Points |

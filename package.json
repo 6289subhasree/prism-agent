@@ -18,6 +18,7 @@
     "express": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "tldts": "7.4.11",
     "vite": "latest",
     "zod": "4.5.4"
   }

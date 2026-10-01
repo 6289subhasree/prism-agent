@@ -3,14 +3,14 @@ const choice = "__PRISM_CHOICE__";
 const requests = [];
 let collectingAfter = false;
 function hostname(value) {
-  const match = String(value).match(/^https?:\/\/([^/:?#]+)/i);
+  const match = String(value).match(/^https?:\/\/(?:[^@/]+@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?/i);
   return match ? match[1].toLowerCase() : null;
 }
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-const mainDomain = hostname(await page.url());
+const finalUrl = await page.url();
 page.on('request', req => {
   const domain = hostname(req.url());
-  if (domain && domain !== mainDomain) requests.push({ domain, after: collectingAfter });
+  if (domain) requests.push({ domain, after: collectingAfter });
 });
 await page.waitForTimeout(3000);
 // Select only one explicit choice inside a visible cookie/consent container.
@@ -51,9 +51,13 @@ const controlDismissed = await page.evaluate((action) => {
   const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
   return rect.width === 0 || rect.height === 0 || style.display === 'none' || style.visibility === 'hidden' || !!el.closest('[hidden], [aria-hidden="true"]');
 }, choice);
+const countsFor = after => {
+  const counts = new Map();
+  for (const request of requests.filter(item => item.after === after)) counts.set(request.domain, (counts.get(request.domain) || 0) + 1);
+  return [...counts].map(([hostname, count]) => ({ hostname, count }));
+};
 return {
-  status: 'observed', clickedLabel: selected.label, controlDismissed,
-  beforeDomains: [...new Set(requests.filter(r => !r.after).map(r => r.domain))],
-  afterDomains: [...new Set(requests.filter(r => r.after).map(r => r.domain))],
-  afterRequests: requests.filter(r => r.after).length, observationMs: 3000,
+  status: 'observed', clickedLabel: selected.label, controlDismissed, finalUrl,
+  beforeRequestsByHostname: countsFor(false), afterRequestsByHostname: countsFor(true),
+  observationMs: 3000,
 };

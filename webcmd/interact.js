@@ -22,22 +22,14 @@ page.on("request", (req) => {
     domain,
     resourceType: req.resourceType(),
     method: req.method(),
-    thirdParty: domain !== mainDomain,
   });
 });
 
 const actions = [];
 
-const alreadyThere = (() => {
-  try {
-    return (
-      domainOf(page.url()) === mainDomain &&
-      page.url() !== "about:blank"
-    );
-  } catch {
-    return false;
-  }
-})();
+// This phase is invoked only inside the session that completed exploration.
+// Keep the final redirected page instead of navigating back to the input URL.
+const alreadyThere = !!domainOf(await page.url());
 
 if (!alreadyThere) {
   await page.goto(url, {
@@ -73,37 +65,20 @@ await page.waitForTimeout(6000);
 
 actions.push("capture_network");
 
-const thirdPartyRequests = requests.filter(
-  (r) => r.thirdParty
-);
-
-const firstPartyRequests = requests.filter(
-  (r) => !r.thirdParty
-);
-
-const thirdPartyDomains = [
-  ...new Set(
-    thirdPartyRequests.map((r) => r.domain)
-  ),
-];
+const finalUrl = await page.url();
+const counts = new Map();
+for (const request of requests) counts.set(request.domain, (counts.get(request.domain) || 0) + 1);
 
 return {
   phase: "interact",
   investigatedUrl: url,
+  finalUrl,
   mainDomain,
   actions,
   continuedExistingPage: alreadyThere,
 
   network: {
-    totalRequests: requests.length,
-    firstPartyRequests:
-      firstPartyRequests.length,
-    thirdPartyRequests:
-      thirdPartyRequests.length,
-    uniqueThirdPartyDomains:
-      thirdPartyDomains.length,
-    domains: thirdPartyDomains,
-    sampleThirdPartyRequests:
-      thirdPartyRequests.slice(0, 40),
+    requestsByHostname: [...counts].map(([hostname, count]) => ({ hostname, count })),
+    requestSamples: requests.slice(0, 200),
   },
 };

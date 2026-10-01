@@ -22,6 +22,7 @@ const { WORKFLOW_PREFIX } = require("./progress");
 const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
 const { requestGeminiJson } = require("./gemini-request");
+const { classifyEvidence, classifyNetwork, classifyConsentResult } = require("../evidence/domain-classifier");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
@@ -206,7 +207,10 @@ function runPhase(sessionId, scriptRelPath, url, timeoutMs, options = {}) {
     );
 
     const parsed = parseJsonOutput(raw, "browser run");
-    return parsed.result ?? parsed;
+    const result = parsed.result ?? parsed;
+    if (["webcmd/explore.js", "webcmd/interact.js"].includes(scriptRelPath)) return classifyEvidence(result, options.referenceUrl);
+    if (scriptRelPath === "webcmd/consent-experiment.js") return classifyConsentResult(result);
+    return result;
   } finally {
     try {
       fs.unlinkSync(tempPath);
@@ -222,7 +226,7 @@ function decideIfDeeperInvestigationNeeded(phase1Evidence) {
 
   const hasExternalForm = phase1Evidence.forms.items.some((f) => f.externalDestination);
   if (hasExternalForm) {
-    reasons.push("A form submits to an external domain — worth confirming behavior under interaction.");
+    reasons.push("A form has a configured action on an external site; submission has not been tested.");
   }
 
   const domainCount = phase1Evidence.network.uniqueThirdPartyDomains;
@@ -255,7 +259,6 @@ function mergeEvidence(phase1, phase2) {
     };
   }
 
-  const mergedDomains = [...new Set([...phase1.network.domains, ...phase2.network.domains])];
   const newlyDiscovered = phase2.network.domains.filter((d) => !phase1.network.domains.includes(d));
 
   return {
@@ -263,15 +266,11 @@ function mergeEvidence(phase1, phase2) {
     // forms/scripts are only extracted in phase 1 (DOM inspection); phase 2
     // is a network-focused re-observation of the same page after scrolling.
     network: {
-      totalRequests: phase1.network.totalRequests + phase2.network.totalRequests,
-      firstPartyRequests: phase1.network.firstPartyRequests + phase2.network.firstPartyRequests,
-      thirdPartyRequests: phase1.network.thirdPartyRequests + phase2.network.thirdPartyRequests,
-      uniqueThirdPartyDomains: mergedDomains.length,
-      domains: mergedDomains,
-      sampleThirdPartyRequests: [
-        ...phase1.network.sampleThirdPartyRequests,
-        ...phase2.network.sampleThirdPartyRequests,
-      ].slice(0, 40),
+      ...classifyNetwork(
+        [...phase1.network.requestsByHostname, ...phase2.network.requestsByHostname],
+        phase1.network.classification.referenceUrl,
+        [...phase1.network.sampleThirdPartyRequests, ...phase2.network.sampleThirdPartyRequests],
+      ),
       newlyDiscoveredOnDeeperInspection: newlyDiscovered,
     },
   };
@@ -411,7 +410,7 @@ async function collectBrowserEvidence(targetUrl, requireTime) {
     if (plannerDecision.needed) {
       console.log(`  → ${plannerDecision.decision}: ${plannerDecision.reason}`);
       console.log("✓ [ACT] Running phase 2 interaction (scroll + extended wait, same page)...");
-      phase2 = runPhase(sessionId, "webcmd/interact.js", targetUrl, requireTime("phase 2 interaction"));
+      phase2 = runPhase(sessionId, "webcmd/interact.js", targetUrl, requireTime("phase 2 interaction"), { referenceUrl: phase1.finalUrl });
       phases.push({ phase: "deep", actions: phase2.actions || ["scroll", "capture_network"] });
       const newCount = phase2.network.domains.filter((d) => !phase1.network.domains.includes(d)).length;
       console.log(`  Phase 2 found ${phase2.network.uniqueThirdPartyDomains} third-party domains (${newCount} new)`);

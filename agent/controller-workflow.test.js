@@ -8,8 +8,8 @@ const { scoreEvidence } = require('../evidence/scorer');
 
 function controllerFixture(deep, requestGeminiJson) {
   const calls = [];
-  const network = domains => ({ totalRequests: 4, firstPartyRequests: 2, thirdPartyRequests: 2, domains, uniqueThirdPartyDomains: domains.length, sampleThirdPartyRequests: [] });
-  const initial = { network: network(deep ? ['a.test', 'b.test'] : []), forms: { count: 0, sensitiveFieldCount: 0, items: [] } };
+  const network = domains => ({ requestsByHostname: [{ hostname: 'example.com', count: 4 - domains.length }, ...domains.map(hostname => ({ hostname, count: 1 }))], requestSamples: [] });
+  const initial = { finalUrl: 'https://example.com', network: network(deep ? ['a.test', 'b.test'] : []), forms: { count: 0, sensitiveFieldCount: 0, items: [] } };
   const execute = (_command, args, options) => {
     assert(options.timeout > 0);
     if (args.includes('--version')) return '0.7.8';
@@ -22,7 +22,7 @@ function controllerFixture(deep, requestGeminiJson) {
       calls.push('consent');
       return JSON.stringify({ result: { observedAt: new Date().toISOString(), pageUrl: 'https://example.com', bannerCount: 0, controls: [], scope: 'top-level-document' } });
     }
-    if (calls.includes('initial')) { calls.push('deep'); return JSON.stringify({ result: { network: network(['c.test']), continuedExistingPage: true } }); }
+    if (calls.includes('initial')) { calls.push('deep'); return JSON.stringify({ result: { finalUrl: 'https://example.com', network: network(['c.test']), continuedExistingPage: true } }); }
     calls.push('initial'); return JSON.stringify({ result: initial });
   };
   const filename = path.join(__dirname, 'controller.js');
@@ -46,6 +46,8 @@ test('controller adapters retain initial/deeper evidence, session cleanup, and d
     assert.equal(report.agentLoop.phase2Ran, deep);
     assert.equal(report.agentLoop.investigationPhases.length, deep ? 2 : 1);
     assert.equal(report.evidence.network.totalRequests, deep ? 8 : 4);
+    assert.equal(report.evidence.network.classification.referenceDomain, 'example.com');
+    assert.equal(report.evidence.network.requestsByHostname.reduce((sum, host) => sum + host.count, 0), deep ? 8 : 4);
     assert.deepEqual(report.scoring, scoreEvidence(report.evidence));
     assert.equal(report.workflow.status, 'completed');
     assert.equal(report.workflow.agents[2].status, 'skipped');

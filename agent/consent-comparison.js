@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { z } = require('zod');
 const { createSessionManager } = require('./session-manager');
+const hostCounts = z.array(z.object({ hostname: z.string(), count: z.number().int().nonnegative(), thirdParty: z.boolean() }));
 const observation = z.object({
   status: z.enum(['observed', 'skipped']),
   reason: z.string().optional(),
@@ -10,6 +11,13 @@ const observation = z.object({
   afterDomains: z.array(z.string()).default([]),
   afterRequests: z.number().int().nonnegative().default(0),
   observationMs: z.literal(3000).optional(),
+  finalUrl: z.string().url().optional(),
+  beforeRequestsByHostname: hostCounts.optional(),
+  afterRequestsByHostname: hostCounts.optional(),
+  classification: z.object({
+    method: z.literal('registrable-domain'), version: z.literal(1), privateSuffixes: z.literal(true),
+    referenceUrl: z.string().url(), referenceHostname: z.string(), referenceDomain: z.string(),
+  }).optional(),
 });
 
 async function compareConsent({ run, parseJson, runExperiment, now = Date.now }) {
