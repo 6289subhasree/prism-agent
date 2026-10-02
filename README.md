@@ -94,7 +94,9 @@ Partial stages show their recorded reasons, including consent inspection errors,
 
 For a delayed consent banner, comparison checks for the requested control twice more at one-second intervals after its initial check. It clicks only a single unambiguous match; multiple matches are skipped immediately. These checks stay within the existing experiment timeout.
 
-Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second comparison budget and independent cleanup timeouts.
+Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second budget for each consent choice (up to 120 seconds total) and independent cleanup timeouts.
+
+Webcmd timeout errors identify the operation and its actual command limit. Baseline consent detection allows up to 15 seconds within the existing browser budget. Comparison commands are capped at 30 seconds each and charged to their choice's 60-second allowance; cleanup retains its separate five-second allowance. A slow reject run cannot consume the accept run's budget. Per-choice `durationMs`, `budgetMs`, and failure `errorCode` are saved in the report.
 
 ## Findings with evidence
 

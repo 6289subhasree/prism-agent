@@ -21,25 +21,27 @@ const observation = z.object({
 });
 
 async function compareConsent({ run, parseJson, runExperiment, now = Date.now }) {
-  const deadline = now() + 60000;
   const runs = [];
   for (const choice of ['reject', 'accept']) {
+    // A slow first choice must not consume the second choice's allowance.
+    const startedAt = now();
+    const deadline = startedAt + 60000;
     const profileId = `prism-${choice}-${randomUUID()}`;
     const warnings = [];
-    const remaining = () => {
+    const remaining = (step = "browser experiment") => {
       const budget = Math.min(30000, deadline - now());
-      if (budget <= 0) throw new Error('Consent comparison time budget exhausted');
+      if (budget <= 0) throw Object.assign(new Error(`Consent ${choice} exhausted its 60s budget before ${step}`), { code: 'CONSENT_TIMEOUT' });
       return budget;
     };
     const scopedRun = (args, timeout) => run(['--profile', profileId, ...args], timeout);
     const sessions = createSessionManager({ run: scopedRun, parseJson, remaining, onWarning: warning => warnings.push(warning) });
     try {
-      const profile = parseJson(run(['profile', 'create', profileId, '-f', 'json'], remaining()), 'profile create');
+      const profile = parseJson(run(['profile', 'create', profileId, '-f', 'json'], remaining('profile create')), 'profile create');
       if (profile.created !== true) throw new Error('Webcmd did not confirm a fresh profile; comparison skipped');
       const result = await sessions.withSession(sessionId => runExperiment({ sessionId, choice, run: scopedRun, timeoutMs: remaining() }));
-      runs.push({ choice, profileId, ...observation.parse(result), warnings });
+      runs.push({ choice, profileId, ...observation.parse(result), warnings, durationMs: now() - startedAt, budgetMs: 60000 });
     } catch (error) {
-      runs.push({ choice, profileId, status: 'failed', reason: error.message, warnings });
+      runs.push({ choice, profileId, status: 'failed', reason: error.message, errorCode: error.code || 'CONSENT_FAILED', warnings, durationMs: now() - startedAt, budgetMs: 60000 });
     }
   }
   const reject = runs[0], accept = runs[1];

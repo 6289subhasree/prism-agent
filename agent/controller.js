@@ -26,7 +26,7 @@ const { classifyEvidence, classifyNetwork, classifyConsentResult } = require("..
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
-// Hard ceiling on the whole investigation (not just one browser op) so a
+// Hard ceiling on baseline browser collection so a
 // stuck/misbehaving site can't hang a live demo indefinitely.
 //
 // NOTE: execFileSync() below is a synchronous, blocking call. A
@@ -127,10 +127,15 @@ function preflightWebcmd(timeoutMs, run = webcmd) {
 // investigation deadline: execFileSync sends SIGTERM and throws if the
 // child hasn't finished within that window, which is what actually makes
 // MAX_INVESTIGATION_TIME_MS a hard ceiling instead of a comment.
-function webcmd(args, timeoutMs) {
+function webcmd(args, timeoutMs, execute = execFileSync) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError("Webcmd requires a positive timeout");
+  const startedAt = Date.now();
+  const operationArgs = [...args];
+  while (["--profile", "--session"].includes(operationArgs[0])) operationArgs.splice(0, 2);
+  const operation = operationArgs.slice(0, operationArgs[0] === "doctor" || operationArgs[0] === "--version" ? 1 : 2).join(" ");
   try {
     const command = webcmdExecutable();
-    return execFileSync(command.executable, [...command.prefixArgs, ...args], {
+    return execute(command.executable, [...command.prefixArgs, ...args], {
       encoding: "utf-8",
       maxBuffer: 1024 * 1024 * 20,
       timeout: timeoutMs,
@@ -148,11 +153,9 @@ function webcmd(args, timeoutMs) {
       err.signal === "SIGTERM" ||
       err.code === "ETIMEDOUT"
     ) {
-      throw new Error(
-        `Investigation timed out after ${
-          MAX_INVESTIGATION_TIME_MS / 1000
-        }s (stuck during: webcmd ${args.slice(0, 2).join(" ")})`
-      );
+      throw Object.assign(new Error(
+        `Webcmd ${operation} exceeded its ${(timeoutMs / 1000).toFixed(1)}s command limit (${((Date.now() - startedAt) / 1000).toFixed(1)}s elapsed)`
+      ), { code: "WEBCMD_TIMEOUT", operation, timeoutMs, elapsedMs: Date.now() - startedAt });
     }
 
     const stderr = typeof err.stderr === "string"
@@ -211,6 +214,9 @@ function runPhase(sessionId, scriptRelPath, url, timeoutMs, options = {}) {
     if (["webcmd/explore.js", "webcmd/interact.js"].includes(scriptRelPath)) return classifyEvidence(result, options.referenceUrl);
     if (scriptRelPath === "webcmd/consent-experiment.js") return classifyConsentResult(result);
     return result;
+  } catch (error) {
+    if (error.code === "WEBCMD_TIMEOUT") error.message += ` while running ${scriptRelPath}`;
+    throw error;
   } finally {
     try {
       fs.unlinkSync(tempPath);
@@ -398,7 +404,7 @@ async function collectBrowserEvidence(targetUrl, requireTime) {
     );
 
     try {
-      consent = analyzeConsent(runPhase(sessionId, "webcmd/consent.js", targetUrl, Math.min(5000, requireTime("consent detection"))));
+      consent = analyzeConsent(runPhase(sessionId, "webcmd/consent.js", targetUrl, Math.min(15000, requireTime("consent detection"))));
     } catch (error) {
       console.error(`Warning: consent inspection failed: ${error.message}`);
       consent = { status: "unavailable", error: error.message };
@@ -514,5 +520,5 @@ if (require.main === module) {
 
 module.exports = {
   investigate,
-  _testing: { parseJsonOutput, preflightWebcmd, webcmdExecutable },
+  _testing: { parseJsonOutput, preflightWebcmd, webcmdExecutable, webcmd },
 };

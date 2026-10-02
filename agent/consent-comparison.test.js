@@ -123,3 +123,43 @@ test('ambiguous controls stop inspection immediately even after an initially mis
     assert.match(f.result.reason, /Multiple/);
   }
 });
+
+test('accept gets its own deadline after reject exhausts its allowance', async () => {
+  let clock = 0, profileCount = 0, experiments = 0;
+  const f = fixture(() => { experiments++; return observed(['accepted.test']); });
+  const originalRun = f.options.run;
+  f.options.now = () => clock;
+  f.options.run = (args, timeout) => {
+    const result = originalRun(args, timeout);
+    if (args[0] === 'profile' && ++profileCount === 1) clock += 60001;
+    return result;
+  };
+  const result = await compareConsent(f.options);
+  assert.equal(result.runs[0].errorCode, 'CONSENT_TIMEOUT');
+  assert.match(result.runs[0].reason, /reject.*60s.*session create/);
+  assert.equal(result.runs[1].status, 'observed');
+  assert.equal(experiments, 1);
+  assert.equal(result.comparison, null);
+  assert(f.calls.every(call => call.timeout > 0 && call.timeout <= 30000));
+});
+
+test('profile and session startup are charged to each choice budget; cleanup remains independent', async () => {
+  let clock = 0;
+  const f = fixture(({ timeoutMs }) => {
+    assert.equal(timeoutMs, 20000);
+    clock += 20000;
+    throw Object.assign(new Error('browser operation timed out'), { code: 'WEBCMD_TIMEOUT' });
+  });
+  const originalRun = f.options.run;
+  f.options.now = () => clock;
+  f.options.run = (args, timeout) => {
+    const result = originalRun(args, timeout);
+    if (args[0] === 'profile' || args[3] === 'create') clock += 20000;
+    if (args[3] === 'close') { assert.equal(timeout, 5000); clock += 5000; }
+    return result;
+  };
+  const result = await compareConsent(f.options);
+  assert.equal(clock, 130000);
+  assert(result.runs.every(run => run.durationMs === 65000 && run.budgetMs === 60000 && run.errorCode === 'WEBCMD_TIMEOUT'));
+  assert.equal(f.calls.filter(call => call.args[3] === 'close').length, 2);
+});

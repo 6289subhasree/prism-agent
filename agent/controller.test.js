@@ -72,3 +72,29 @@ test("preflight gives the required action when Webcmd is unavailable", () => {
     (error) => error.message === "Webcmd is unavailable. Run npm install, then npm run prism:doctor before investigating."
   );
 });
+
+test("Webcmd timeout reports the actual command limit and ignores profile/session prefixes", () => {
+  for (const [args, timeoutMs, operation] of [
+    [["--profile", "private-profile", "--session", "private-session", "browser", "run", "--file", "private-path"], 5000, "browser run"],
+    [["--profile", "private-profile", "session", "create", "private-session"], 17342, "session create"],
+  ]) {
+    assert.throws(() => _testing.webcmd(args, timeoutMs, (_command, _args, options) => {
+      assert.equal(options.timeout, timeoutMs);
+      throw Object.assign(new Error("spawn timed out"), { code: "ETIMEDOUT" });
+    }), error => {
+      assert.equal(error.code, "WEBCMD_TIMEOUT");
+      assert.equal(error.timeoutMs, timeoutMs);
+      assert.equal(error.operation, operation);
+      assert(error.message.includes((timeoutMs / 1000).toFixed(1) + "s command limit"));
+      assert(!error.message.includes("90s"));
+      assert(!error.message.includes("private-"));
+      return true;
+    });
+  }
+});
+
+test("Webcmd refuses unbounded execution", () => {
+  for (const timeoutMs of [undefined, 0, -1, Infinity, NaN]) {
+    assert.throws(() => _testing.webcmd(["doctor"], timeoutMs, () => assert.fail("must not spawn")), /positive timeout/);
+  }
+});
