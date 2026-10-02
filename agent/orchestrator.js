@@ -93,7 +93,7 @@ async function orchestrateInvestigation(targetUrl, options) {
       refs: ["report.explanation"],
       outcome: value => value.status === "unavailable" ? "partial" : "completed",
       warnings: value => value.status === "unavailable" ? [value.reasoning || "Explanation unavailable"] : [],
-      fallback: () => ({ status: "unavailable", evidenceBullets: [], reasoning: "The optional explanation is unavailable. Observed evidence and deterministic scoring are retained.", dataCollectionFindings: [], findings: [] }),
+      fallback: error => ({ status: "unavailable", evidenceBullets: [], reasoning: error?.message || "Gemini is not configured. Observed evidence and deterministic scoring are retained.", ...(error ? { error } : {}), dataCollectionFindings: [], findings: [] }),
     });
     const consentComparison = await stage("consent-comparison", "Comparing reject and accept", () => options.compareConsent(targetUrl), {
       optional: true, skip: options.comparisonEnabled ? null : "Consent comparison is disabled",

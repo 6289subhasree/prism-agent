@@ -94,7 +94,7 @@ Partial stages show their recorded reasons, including consent inspection errors,
 
 For a delayed consent banner, comparison checks for the requested control twice more at one-second intervals after its initial check. It clicks only a single unambiguous match; multiple matches are skipped immediately. These checks stay within the existing experiment timeout.
 
-Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. The baseline browser and explanation share the existing 90-second budget, with a separate 60-second budget for each consent choice (up to 120 seconds total) and independent cleanup timeouts.
+Workflow mode is `staged-workflow`: these are separately invoked stages with defined inputs and outputs. This is not yet a team of independently reasoning agents. The browser stage retains the existing shared session for initial and deeper observation; consent comparison still uses separate fresh profiles. Browser collection has a 90-second budget. Gemini has its own 45-second allowance by default. Each consent choice has a separate 60-second budget (up to 120 seconds for both), with independent cleanup timeouts. This permits longer investigations on slow machines, while every operation remains bounded.
 
 Webcmd timeout errors identify the operation and its actual command limit. Baseline consent detection allows up to 15 seconds within the existing browser budget. Comparison commands are capped at 30 seconds each and charged to their choice's 60-second allowance; cleanup retains its separate five-second allowance. A slow reject run cannot consume the accept run's budget. Per-choice `durationMs`, `budgetMs`, and failure `errorCode` are saved in the report.
 
@@ -256,9 +256,20 @@ Do not terminate unrelated Node processes such as an active Codex session.
 
 ### Investigation succeeds but Gemini is unavailable
 
-Confirm that the root `.env` contains `GEMINI_API_KEY`, restart `npm run dev`, and investigate again. The deterministic report remains valid without Gemini.
+Run `npm run prism:gemini` from the project directory. This sends one minimal JSON prompt (with at most one 503 retry) using your local key, without starting Webcmd or uploading website evidence. It distinguishes missing credentials, unavailable models, quota errors, network errors, and timeouts. A pass confirms basic connectivity and model access; it does not guarantee a full explanation will finish.
 
-An HTTP 503 means the provider could not serve the request. PRISM retries it once when time permits, honoring `Retry-After`. Both attempts, the wait, and response reading share the existing 25-second explanation limit and remaining investigation budget. If the provider stays unavailable, the report keeps its evidence and score and shows the API error in the explanation stage.
+The explanation request sends an evidence summary with bounded detail lists rather than raw request samples. Aggregate counts and the deterministic score are retained. It has its own 45-second deadline, including response-body reading and the existing bounded 503 retry. Timeout errors identify whether it was waiting for an HTTP response, reading the body, or waiting before a retry; the report displays that reason.
+
+Optional `.env` settings:
+
+```dotenv
+GEMINI_MODEL=gemini-3.7-flash
+PRISM_GEMINI_TIMEOUT_MS=45000
+```
+
+The model shown is the project's existing default; use a model ID available to your API key. The timeout must be between 1000 and 60000 milliseconds. Restart `npm run dev` after changing settings. The diagnostic never prints your API key; do not share your `.env` file. The deterministic report remains available when Gemini fails.
+
+An HTTP 503 means the provider could not serve the request. PRISM retries it once when time permits, honoring `Retry-After`. Both attempts, the wait, and response reading share the configured explanation deadline (45 seconds by default), independent of the browser budget. If the provider stays unavailable, the report keeps its evidence and score and shows the API error in the explanation stage.
 
 ## Repository structure
 
@@ -305,7 +316,7 @@ npm run dev
 
 Each investigation then attempts reject and accept in separate, newly created Webcmd profiles. It clicks only a single explicit matching button within a visible consent container. Ambiguous or missing choices are skipped. A comparison is shown only when both runs complete and the clicked controls disappear. It reports third-party traffic over a three-second window after each click, without changing the original risk score. The runs are sequential; differences can reflect timing and site variability, and do not establish that consent was honored.
 
-Comparison has a separate 60-second work budget plus bounded session cleanup, so it extends the original investigation duration. Webcmd 0.7.8 retains generated profile directories locally; this mode is opt-in to avoid creating profiles during every normal investigation. Browser sessions are closed after each attempt. Stop the server and use `$env:PRISM_COMPARE_CONSENT="0"` to disable it.
+Comparison has a separate 60-second work budget per choice (up to 120 seconds total), plus bounded session cleanup, so it extends the original investigation duration. Webcmd 0.7.8 retains generated profile directories locally; this mode is opt-in to avoid creating profiles during every normal investigation. Browser sessions are closed after each attempt. Stop the server and use `$env:PRISM_COMPARE_CONSENT="0"` to disable it.
 
 ### Inspecting and saving a report
 

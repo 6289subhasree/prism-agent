@@ -22,6 +22,8 @@ const { WORKFLOW_PREFIX } = require("./progress");
 const { analyzeConsent } = require("./consent");
 const { createSessionManager } = require("./session-manager");
 const { requestGeminiJson } = require("./gemini-request");
+const { geminiConfig } = require("./gemini-config");
+const { explanationEvidence } = require("./explanation-evidence");
 const { classifyEvidence, classifyNetwork, classifyConsentResult } = require("../evidence/domain-classifier");
 
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
@@ -37,8 +39,6 @@ const URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 // happens via execFileSync's own `timeout` option, budgeted per-call
 // against a shared deadline below.
 const MAX_INVESTIGATION_TIME_MS = 90000;
-const GEMINI_MODEL = "gemini-3.7-flash";
-const GEMINI_TIMEOUT_MS = 25000;
 const WEBCMD_PREFLIGHT_TIMEOUT_MS = 20000;
 const WEBCMD_UNAVAILABLE_MESSAGE = "Webcmd is unavailable. Run npm install, then npm run prism:doctor before investigating.";
 
@@ -283,7 +283,7 @@ function mergeEvidence(phase1, phase2) {
 }
 
 // --- EXPLAIN step: Gemini narrates, never scores ----------------------
-async function explainWithGemini(evidence, scoring, plannerDecision, remainingMs) {
+async function explainWithGemini(evidence, scoring, plannerDecision) {
   const prompt = `
 You are a privacy analyst writing plain-language explanations for a
 PRE-COMPUTED, deterministic risk score.
@@ -304,11 +304,12 @@ Hard rules — follow all of them:
    heuristic pattern matches, not confirmed facts. Use hedged language
    such as "likely an analytics service" and mention it's based on
    domain-name pattern matching, not verified behavior.
-6. Never modify, override, or second-guess the deterministic risk score
+6. Some detail lists are capped; omittedDetails records the omissions. Never treat an omitted item as absent.
+7. Never modify, override, or second-guess the deterministic risk score
    or its breakdown.
 
 Evidence (structured, from live browser observation):
-${JSON.stringify(evidence, null, 2)}
+${JSON.stringify(explanationEvidence(evidence))}
 
 Deterministic scoring (already computed, do not change):
 ${JSON.stringify(scoring, null, 2)}
@@ -332,10 +333,11 @@ Return ONLY JSON (no markdown, no prose) with this shape:
 }
 `.trim();
 
-  // The request and its single overload retry share the remaining time budget.
+  // Explanation has its own bounded allowance, including any overload retry.
+  const config = geminiConfig();
   if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
   const data = await requestGeminiJson(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=` +
+      `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=` +
         process.env.GEMINI_API_KEY,
       {
         method: "POST",
@@ -369,7 +371,7 @@ Return ONLY JSON (no markdown, no prose) with this shape:
           },
         }),
       },
-      { budgetMs: Math.min(remainingMs, GEMINI_TIMEOUT_MS) },
+      { budgetMs: config.timeoutMs },
   );
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("No response from Gemini: " + JSON.stringify(data));
@@ -469,7 +471,7 @@ async function collectBrowserEvidence(targetUrl, requireTime) {
 }
 
 function investigate(targetUrl, options = {}) {
-  // Baseline browser + explanation retain the existing shared deadline.
+  // Browser collection has a deadline independent of the optional explanation.
   // Consent comparison has its own bounded budget and fresh profiles.
   const deadline = Date.now() + MAX_INVESTIGATION_TIME_MS;
   const requireTime = step => {
@@ -481,7 +483,7 @@ function investigate(targetUrl, options = {}) {
     collectEvidence: url => collectBrowserEvidence(url, requireTime),
     scoreEvidence,
     explanationEnabled: Boolean(process.env.GEMINI_API_KEY),
-    explain: (evidence, scoring, decision) => explainWithGemini(evidence, scoring, decision, requireTime("Gemini explanation")),
+    explain: (evidence, scoring, decision) => explainWithGemini(evidence, scoring, decision),
     comparisonEnabled: process.env.PRISM_COMPARE_CONSENT === "1",
     compareConsent: url => compareConsent({
       run: webcmd, parseJson: parseJsonOutput,

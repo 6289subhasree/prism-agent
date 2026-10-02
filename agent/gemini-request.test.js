@@ -87,3 +87,32 @@ test("non-JSON 503 errors can retry but malformed successful responses cannot", 
   assert.equal(calls, 2);
   await assert.rejects(request({ ...f.options, fetchImpl: async () => ({ ok: true, json: async () => { throw new SyntaxError("bad JSON"); } }) }), SyntaxError);
 });
+
+test("timeout distinguishes waiting for headers from a stalled response body", async () => {
+  for (const bodyStall of [false, true]) {
+    const fetchImpl = async (_url, { signal }) => {
+      const stalled = () => new Promise((_, reject) => {
+        const abort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        if (signal.aborted) abort(); else signal.addEventListener("abort", abort, { once: true });
+      });
+      return bodyStall ? { ok: true, json: stalled } : stalled();
+    };
+    await assert.rejects(request({ budgetMs: 20, fetchImpl }), error => {
+      assert.equal(error.code, "GEMINI_TIMEOUT");
+      assert.equal(error.attempts, 1);
+      assert.equal(error.phase, bodyStall ? "reading response body" : "waiting for HTTP response");
+      return true;
+    });
+  }
+});
+
+test("connection diagnostics expose error codes without including request URLs or keys", async () => {
+  await assert.rejects(request({ budgetMs: 1000, fetchImpl: async () => {
+    throw Object.assign(new TypeError("https://provider/?key=private-key"), { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } });
+  } }), error => {
+    assert.equal(error.code, "GEMINI_NETWORK");
+    assert.match(error.message, /UND_ERR_CONNECT_TIMEOUT/);
+    assert(!error.message.includes("private-key"));
+    return true;
+  });
+});
